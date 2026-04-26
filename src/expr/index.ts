@@ -1,12 +1,19 @@
-import { JSEvalOptions, JSEvaluator } from "./evaluator.js"
-import { JSLexer, type JSToken } from "./lexer.js"
-import { type JSExprNode } from "./node-types.js"
-import { JSParserOptions, JSExpressionParser, JSParseError } from "./parser.js"
+import { type JSEvalOptions, JSEvaluator } from './evaluator.js'
+import { JSLexer, type JSToken } from './lexer.js'
+import type { JSExprNode } from './node-types.js'
+import { type JSParserOptions, JSExpressionParser, JSParseError } from './parser.js'
+
+// #region Shared public types
 
 /** Options shared by parsing and evaluation helpers. */
 export interface EvalOptions extends JSParserOptions, JSEvalOptions {}
 
-export { JSExpressionParser, type JSParserOptions, JSParseError } from "./parser.js"
+// #endregion
+
+// #region Re-exports
+
+export { defaultCallPermissionPolicy } from './call-permission.js'
+export { JSExpressionParser, type JSParserOptions, JSParseError } from './parser.js'
 export {
   allowAllCalls,
   JSEvaluator,
@@ -18,7 +25,7 @@ export {
   type RootContextMode,
   type TaggedTemplateArrayMode,
   JSEvalError,
-} from "./evaluator.js"
+} from './evaluator.js'
 export {
   JSLexer,
   type JSToken,
@@ -26,7 +33,7 @@ export {
   type TemplateQuasi,
   JSLexError,
   cookTemplate,
-} from "./lexer.js"
+} from './lexer.js'
 
 export type {
   JSExprNode,
@@ -46,7 +53,11 @@ export type {
   JSObjectPropNode,
   JSTemplateNode,
   JSSequenceNode,
-} from "./node-types.js"
+} from './node-types.js'
+
+// #endregion
+
+// #region Validation helpers
 
 /** Parsed expression that can be evaluated repeatedly with different scopes. */
 export interface CompiledExpression {
@@ -58,7 +69,7 @@ export interface CompiledExpression {
 /** Tokenize an expression source string. */
 export function tokenizeExpression(
   expression: string,
-  options: Pick<JSParserOptions, 'maxSourceLength'> = {}
+  options: Pick<JSParserOptions, 'maxSourceLength'> = {},
 ): JSToken[] {
   validateSourceLength(expression, options)
   return new JSLexer(expression).tokenize()
@@ -66,7 +77,7 @@ export function tokenizeExpression(
 
 function validateSourceLength(
   expression: string,
-  options: Pick<JSParserOptions, 'maxSourceLength'>
+  options: Pick<JSParserOptions, 'maxSourceLength'>,
 ): void {
   const max = options.maxSourceLength
   if (max !== undefined && expression.length > max) {
@@ -117,15 +128,22 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
 
       case 'call':
         if (options.maxCallArguments !== undefined && node.args.length > options.maxCallArguments) {
-          throw new JSParseError(`Expression exceeds maximum call argument count (${options.maxCallArguments})`)
+          throw new JSParseError(
+            `Expression exceeds maximum call argument count (${options.maxCallArguments})`,
+          )
         }
         visit(node.callee, depth + 1)
         for (const arg of node.args) visit(arg, depth + 1)
         return
 
       case 'array':
-        if (options.maxArrayElements !== undefined && node.elements.length > options.maxArrayElements) {
-          throw new JSParseError(`Expression exceeds maximum array element count (${options.maxArrayElements})`)
+        if (
+          options.maxArrayElements !== undefined &&
+          node.elements.length > options.maxArrayElements
+        ) {
+          throw new JSParseError(
+            `Expression exceeds maximum array element count (${options.maxArrayElements})`,
+          )
         }
         for (const element of node.elements) {
           if (element !== null) visit(element, depth + 1)
@@ -133,8 +151,13 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
         return
 
       case 'object':
-        if (options.maxObjectProperties !== undefined && node.props.length > options.maxObjectProperties) {
-          throw new JSParseError(`Expression exceeds maximum object property count (${options.maxObjectProperties})`)
+        if (
+          options.maxObjectProperties !== undefined &&
+          node.props.length > options.maxObjectProperties
+        ) {
+          throw new JSParseError(
+            `Expression exceeds maximum object property count (${options.maxObjectProperties})`,
+          )
         }
         for (const prop of node.props) {
           if (prop.type === 'spread') {
@@ -152,11 +175,11 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
 
       case 'template':
         if (
-          options.maxTemplateExpressions !== undefined
-          && node.expressions.length > options.maxTemplateExpressions
+          options.maxTemplateExpressions !== undefined &&
+          node.expressions.length > options.maxTemplateExpressions
         ) {
           throw new JSParseError(
-            `Expression exceeds maximum template expression count (${options.maxTemplateExpressions})`
+            `Expression exceeds maximum template expression count (${options.maxTemplateExpressions})`,
           )
         }
         if (node.tag) visit(node.tag, depth + 1)
@@ -177,11 +200,12 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
   visit(ast, 1)
 }
 
+// #endregion
+
+// #region Public expression helpers
+
 /** Parse an expression source string into an AST. */
-export function parseExpression(
-  expression: string,
-  options: JSParserOptions = {}
-): JSExprNode {
+export function parseExpression(expression: string, options: JSParserOptions = {}): JSExprNode {
   validateSourceLength(expression, options)
   const tokens = tokenizeExpression(expression, options)
   const parser = new JSExpressionParser(tokens, options, expression)
@@ -193,7 +217,7 @@ export function parseExpression(
 /** Compile an expression once and evaluate it repeatedly with different scopes. */
 export function compileExpression(
   expression: string,
-  options: EvalOptions = {}
+  options: EvalOptions = {},
 ): CompiledExpression {
   const ast = parseExpression(expression, options)
   const evaluator = new JSEvaluator({}, options)
@@ -225,7 +249,7 @@ export const compile = compileExpression
 export function evaluate(
   expression: string,
   context: Record<string, unknown> = {},
-  options: EvalOptions = {}
+  options: EvalOptions = {},
 ): unknown {
   const ast = parseExpression(expression, options)
   const evaluator = new JSEvaluator(context, options)
@@ -244,3 +268,5 @@ export function createEvaluator(options: EvalOptions = {}) {
     return evaluator.evaluate(ast, context)
   }
 }
+
+// #endregion

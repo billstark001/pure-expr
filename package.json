@@ -3,20 +3,33 @@
   "version": "0.1.0",
   "description": "A small ECMAScript expression parser/evaluator and template renderer.",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "default": "./dist/esm/index.js"
     },
     "./expr": {
-      "import": "./dist/expr/index.js",
-      "types": "./dist/expr/index.d.ts"
+      "types": "./dist/types/expr/index.d.ts",
+      "import": "./dist/esm/expr/index.js",
+      "require": "./dist/cjs/expr/index.cjs",
+      "default": "./dist/esm/expr/index.js"
+    },
+    "./expr/call-permission": {
+      "types": "./dist/types/expr/call-permission.d.ts",
+      "import": "./dist/esm/expr/call-permission.js",
+      "require": "./dist/cjs/expr/call-permission.cjs",
+      "default": "./dist/esm/expr/call-permission.js"
     },
     "./template": {
-      "import": "./dist/template/index.js",
-      "types": "./dist/template/index.d.ts"
+      "types": "./dist/types/template/index.d.ts",
+      "import": "./dist/esm/template/index.js",
+      "require": "./dist/cjs/template/index.cjs",
+      "default": "./dist/esm/template/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -38,7 +51,8 @@
     "parser",
     "evaluator",
     "template",
-    "esm"
+    "esm",
+    "cjs"
   ],
   "license": "MIT",
   "scripts": {
@@ -46,15 +60,19 @@
     "build:js": "node ./scripts/build.mjs",
     "build:types": "tsc -p tsconfig.build.json",
     "bench:expr": "pnpm run build:js && node ./scripts/bench-expr-modes.mjs",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "coverage": "vitest run --config vitest.config.ts --coverage",
     "pack:check": "pnpm pack --dry-run",
-    "ci": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run pack:check",
+    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run pack:check",
     "prepublishOnly": "pnpm run ci"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
     "@vitest/coverage-v8": "^4.1.5",
     "esbuild": "^0.28.0",
     "typescript": "^6.0.3",

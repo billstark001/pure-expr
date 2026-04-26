@@ -1,9 +1,11 @@
+// #region Lexer errors and token types
+
 /** Error raised while tokenizing an expression source string. */
 export class JSLexError extends Error {
   constructor(
     message: string,
     public readonly pos: number,
-    src = ''
+    src = '',
   ) {
     const lo = Math.max(0, pos - 15)
     const hi = Math.min(src.length, pos + 15)
@@ -44,16 +46,32 @@ export interface JSToken {
   }
 }
 
+// #endregion
+
+// #region Lexer internals
+
 // Sticky regex helpers – each is reset before use
-const RX_TRIVIA  = /(?:[ \t\r\n\f\v]+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)+/y
-const RX_NUMBER  = /(?:0[xX][\da-fA-F][\da-fA-F_]*|0[oO][0-7_]*|0[bB][01_]*|(?:0|[1-9][\d_]*)(?:\.[\d_]*)?(?:[eE][+\-]?[\d_]+)?|\.[\d_]+(?:[eE][+\-]?[\d_]+)?)n?/y
-const RX_STRING  = /(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/y
-const RX_IDENT   = /[a-zA-Z_$][\w$]*/y
-const RX_OP      = /(?:>>>=|\.{3}|===|!==|>>>|<<=|>>=|\+=|-=|\*=|\/=|%=|&=|\|=|\^=|\?\?=|\|\|=|&&=|\*\*=|\+\+|--|==|!=|<=|>=|<<|>>|\*\*|&&|\|\||\?\?|\|>|\?\.|=>|[=+\-*\/%&|^~!<>?:.,()[\]{};])/y
+const RX_TRIVIA = /(?:[ \t\r\n\f\v]+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)+/y
+const RX_NUMBER =
+  /(?:0[xX][\da-fA-F][\da-fA-F_]*|0[oO][0-7_]*|0[bB][01_]*|(?:0|[1-9][\d_]*)(?:\.[\d_]*)?(?:[eE][+\-]?[\d_]+)?|\.[\d_]+(?:[eE][+\-]?[\d_]+)?)n?/y
+const RX_STRING = /(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/y
+const RX_IDENT = /[a-zA-Z_$][\w$]*/y
+const RX_OP =
+  /(?:>>>=|\.{3}|===|!==|>>>|<<=|>>=|\+=|-=|\*=|\/=|%=|&=|\|=|\^=|\?\?=|\|\|=|&&=|\*\*=|\+\+|--|==|!=|<=|>=|<<|>>|\*\*|&&|\|\||\?\?|\|>|\?\.|=>|[=+\-*\/%&|^~!<>?:.,()[\]{};])/y
 
 const REGEX_CONTEXT_KEYWORDS = new Set([
-  'typeof', 'void', 'instanceof', 'in', 'return', 'throw',
-  'case', 'else', 'new', 'delete', 'await', 'of',
+  'typeof',
+  'void',
+  'instanceof',
+  'in',
+  'return',
+  'throw',
+  'case',
+  'else',
+  'new',
+  'delete',
+  'await',
+  'of',
 ])
 
 function stickyAt<T extends RegExp>(re: T, src: string, pos: number): RegExpExecArray | null {
@@ -75,6 +93,10 @@ function consumeLineContinuation(raw: string, index: number): number | null {
   return isLineTerminator(ch) ? index : null
 }
 
+// #endregion
+
+// #region Public lexer
+
 /** Converts expression source text into a token stream. */
 export class JSLexer {
   private pos = 0
@@ -86,7 +108,10 @@ export class JSLexer {
     while (this.pos < this.src.length) {
       // skip whitespace / comments
       const ws = stickyAt(RX_TRIVIA, this.src, this.pos)
-      if (ws) { this.pos += ws[0].length; continue }
+      if (ws) {
+        this.pos += ws[0].length
+        continue
+      }
 
       tokens.push(this.lexToken(tokens))
     }
@@ -120,8 +145,7 @@ export class JSLexer {
 
   private lexNumber(): JSToken {
     const m = stickyAt(RX_NUMBER, this.src, this.pos)
-    if (!m || m[0].length === 0)
-      throw new JSLexError('Invalid number literal', this.pos, this.src)
+    if (!m || m[0].length === 0) throw new JSLexError('Invalid number literal', this.pos, this.src)
     const raw = m[0]
     const start = this.pos
     this.pos += raw.length
@@ -146,26 +170,23 @@ export class JSLexer {
     const raw = m[0]
     const start = this.pos
     this.pos += raw.length
-    if (raw === 'true' || raw === 'false')
-      return { kind: 'boolean', raw, start, end: this.pos }
-    if (raw === 'null')
-      return { kind: 'null', raw, start, end: this.pos }
-    if (raw === 'undefined')
-      return { kind: 'undefined', raw, start, end: this.pos }
+    if (raw === 'true' || raw === 'false') return { kind: 'boolean', raw, start, end: this.pos }
+    if (raw === 'null') return { kind: 'null', raw, start, end: this.pos }
+    if (raw === 'undefined') return { kind: 'undefined', raw, start, end: this.pos }
     return { kind: 'identifier', raw, start, end: this.pos }
   }
 
   private lexRegex(): JSToken {
-    const start = this.pos++  // skip /
+    const start = this.pos++ // skip /
     let inClass = false
     while (this.pos < this.src.length) {
       const c = this.src[this.pos++]
-      if (c === '\\') { this.pos++ }
-      else if (c === '[') inClass = true
+      if (c === '\\') {
+        this.pos++
+      } else if (c === '[') inClass = true
       else if (c === ']') inClass = false
       else if (c === '/' && !inClass) {
-        while (this.pos < this.src.length && /[gimsuyv]/.test(this.src[this.pos]))
-          this.pos++
+        while (this.pos < this.src.length && /[gimsuyv]/.test(this.src[this.pos])) this.pos++
         return { kind: 'regex', raw: this.src.slice(start, this.pos), start, end: this.pos }
       } else if (c === '\n') {
         throw new JSLexError('Unterminated regex literal', start, this.src)
@@ -175,7 +196,7 @@ export class JSLexer {
   }
 
   private lexTemplate(): JSToken {
-    const start = this.pos++  // skip `
+    const start = this.pos++ // skip `
     const quasis: TemplateQuasi[] = []
     const exprTokens: JSToken[][] = []
     let rawBuf = ''
@@ -198,7 +219,7 @@ export class JSLexer {
       } else if (c === '$' && this.src[this.pos + 1] === '{') {
         quasis.push({ raw: rawBuf, cooked: cookTemplate(rawBuf) })
         rawBuf = ''
-        this.pos += 2  // skip ${
+        this.pos += 2 // skip ${
         exprTokens.push(this.lexTemplateExpr())
       } else {
         rawBuf += c
@@ -213,10 +234,16 @@ export class JSLexer {
     let depth = 0
     while (this.pos < this.src.length) {
       const ws = stickyAt(RX_TRIVIA, this.src, this.pos)
-      if (ws) { this.pos += ws[0].length; continue }
+      if (ws) {
+        this.pos += ws[0].length
+        continue
+      }
       if (this.pos >= this.src.length) break
       const c = this.src[this.pos]
-      if (c === '}' && depth === 0) { this.pos++; return tokens }
+      if (c === '}' && depth === 0) {
+        this.pos++
+        return tokens
+      }
 
       // Read the next token normally (template literals and regex literals nest recursively)
       const tok = this.lexToken(tokens)
@@ -237,6 +264,10 @@ export class JSLexer {
     return { kind: 'op', raw: m[0], start, end: this.pos }
   }
 }
+
+// #endregion
+
+// #region Template cooking
 
 /** Convert a raw template fragment into its cooked string representation. */
 export function cookTemplate(raw: string): string | null {
@@ -320,7 +351,7 @@ export function cookTemplate(raw: string): string | null {
         if (end === index + 3 || raw[end] !== '}') return null
 
         const codePoint = Number.parseInt(raw.slice(index + 3, end), 16)
-        if (codePoint > 0x10FFFF) return null
+        if (codePoint > 0x10ffff) return null
         cooked += String.fromCodePoint(codePoint)
         index = end
         continue
@@ -341,3 +372,5 @@ export function cookTemplate(raw: string): string | null {
 
   return cooked
 }
+
+// #endregion

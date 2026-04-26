@@ -1,5 +1,16 @@
-import { describe, expect, test } from "vitest";
-import { allowAllCalls, compileExpression, evaluate, EvalOptions, JSEvalError, JSLexError, JSParseError, parseExpression } from "../src/expr/index.js"
+import { describe, expect, test } from 'vitest'
+import {
+  allowAllCalls,
+  compileExpression,
+  evaluate,
+  type EvalOptions,
+  type JSEvalError,
+  JSLexError,
+  JSParseError,
+  parseExpression,
+} from '../src/expr/index.js'
+
+// #region Test helpers
 
 function ev(expr: string, ctx: Record<string, unknown> = {}, opts: EvalOptions = {}): unknown {
   return evaluate(expr, ctx, opts)
@@ -9,105 +20,125 @@ const ALLOW_ALL_CALLS: EvalOptions = Object.freeze({
   isCallableAllowed: allowAllCalls,
 })
 
-describe("evaluator", () => {
-  test('integer literal', () => expect(ev('42')).toBe(42));
-  test('float literal', () => expect(ev('3.14')).toBe(3.14));
-  test('hex literal', () => expect(ev('0xFF')).toBe(255));
-  test('octal literal', () => expect(ev('0o17')).toBe(15));
-  test('binary literal', () => expect(ev('0b1010')).toBe(10));
-  test('bigint literal', () => expect(ev('9007199254740993n')).toBe(9007199254740993n));
-  test('string double quotes', () => expect(ev('"hello"')).toBe('hello'));
-  test('string single quotes', () => expect(ev("'world'")).toBe('world'));
-  test('string escape sequences', () => expect(ev('"a\\nb"')).toBe('a\nb'));
-  test('boolean true', () => expect(ev('true')).toBe(true));
-  test('boolean false', () => expect(ev('false')).toBe(false));
-  test('null literal', () => expect(ev('null')).toBe(null));
-  test('undefined literal', () => expect(ev('undefined')).toBe(undefined));
+// #endregion
+
+// #region Evaluator coverage
+
+describe('evaluator', () => {
+  test('integer literal', () => expect(ev('42')).toBe(42))
+  test('float literal', () => expect(ev('3.14')).toBe(3.14))
+  test('hex literal', () => expect(ev('0xFF')).toBe(255))
+  test('octal literal', () => expect(ev('0o17')).toBe(15))
+  test('binary literal', () => expect(ev('0b1010')).toBe(10))
+  test('bigint literal', () => expect(ev('9007199254740993n')).toBe(9007199254740993n))
+  test('string double quotes', () => expect(ev('"hello"')).toBe('hello'))
+  test('string single quotes', () => expect(ev("'world'")).toBe('world'))
+  test('string escape sequences', () => expect(ev('"a\\nb"')).toBe('a\nb'))
+  test('boolean true', () => expect(ev('true')).toBe(true))
+  test('boolean false', () => expect(ev('false')).toBe(false))
+  test('null literal', () => expect(ev('null')).toBe(null))
+  test('undefined literal', () => expect(ev('undefined')).toBe(undefined))
   test('regex literal', () => {
     const r = ev('/abc/gi') as RegExp
     if (!(r instanceof RegExp)) throw new Error('Expected RegExp instance')
     if (r.source !== 'abc') throw new Error('Wrong source')
     if (r.flags !== 'gi') throw new Error('Wrong flags')
-  });
+  })
 
   // ── Operator precedence ───────────────────────────────────────────
-  test('precedence: * over +', () => expect(ev('2 + 3 * 4')).toBe(14));
-  test('precedence: grouping overrides', () => expect(ev('(2 + 3) * 4')).toBe(20));
-  test('precedence: ** right-assoc', () => expect(ev('2 ** 3 ** 2')).toBe(512)),   // 2**(3**2)=512
-    test('precedence: unary before **', () => expect(ev('-2 ** 2')).toBe(-4)),        // -(2**2)
-    test('precedence: bitwise < arithmetic', () => expect(ev('1 + 2 | 4')).toBe(7)), // (1+2)|4
-    test('left-assoc subtraction', () => expect(ev('10 - 3 - 2')).toBe(5));
-  test('comparison chains', () => expect(ev('1 < 2 === true')).toBe(true));
+  test('precedence: * over +', () => expect(ev('2 + 3 * 4')).toBe(14))
+  test('precedence: grouping overrides', () => expect(ev('(2 + 3) * 4')).toBe(20))
+  test('precedence: ** right-assoc', () => expect(ev('2 ** 3 ** 2')).toBe(512)) // 2**(3**2)=512
+  test('precedence: unary before **', () => expect(ev('-2 ** 2')).toBe(-4)) // -(2**2)
+  test('precedence: bitwise < arithmetic', () => expect(ev('1 + 2 | 4')).toBe(7)) // (1+2)|4
+  test('left-assoc subtraction', () => expect(ev('10 - 3 - 2')).toBe(5))
+  test('comparison chains', () => expect(ev('1 < 2 === true')).toBe(true))
   test('logical AND short-circuit', () => {
     let called = false
-    ev('false && fn()', { fn: () => { called = true } })
+    ev('false && fn()', {
+      fn: () => {
+        called = true
+      },
+    })
     if (called) throw new Error('fn should not have been called')
-  });
+  })
   test('logical OR short-circuit', () => {
     let called = false
-    ev('true || fn()', { fn: () => { called = true } })
+    ev('true || fn()', {
+      fn: () => {
+        called = true
+      },
+    })
     if (called) throw new Error('fn should not have been called')
-  });
-  test('nullish coalescing', () => expect(ev('null ?? "default"')).toBe('default'));
+  })
+  test('nullish coalescing', () => expect(ev('null ?? "default"')).toBe('default'))
   test('nullish coalescing skips 0 and false', () => {
     expect(ev('0 ?? 42')).toBe(0)
     expect(ev('false ?? 42')).toBe(false)
-  });
+  })
   test('nullish coalescing rejects mixing with && or || without parentheses', () => {
     expect(() => ev('1 ?? 2 || 3')).toThrow('without parentheses')
     expect(() => ev('1 && 2 ?? 3')).toThrow('without parentheses')
-  });
+  })
   test('nullish coalescing allows grouped mixes with && or ||', () => {
     expect(ev('(1 ?? 2) || 3')).toBe(1)
     expect(ev('1 ?? (2 || 3)')).toBe(1)
-  });
+  })
 
   // ── Ternary ───────────────────────────────────────────────────────
-  test('ternary basic', () => expect(ev('1 > 0 ? "yes" : "no"')).toBe('yes'));
-  test('ternary right-assoc', () => expect(ev('false ? 1 : true ? 2 : 3')).toBe(2));
+  test('ternary basic', () => expect(ev('1 > 0 ? "yes" : "no"')).toBe('yes'))
+  test('ternary right-assoc', () => expect(ev('false ? 1 : true ? 2 : 3')).toBe(2))
   test('ternary with complex expressions', () =>
-    expect(ev('x > 10 ? x * 2 : x + 1', { x: 5 })).toBe(6)
-  );
+    expect(ev('x > 10 ? x * 2 : x + 1', { x: 5 })).toBe(6))
 
   // ── Arithmetic and math ───────────────────────────────────────────
-  test('modulo', () => expect(ev('17 % 5')).toBe(2));
-  test('division', () => expect(ev('7 / 2')).toBe(3.5));
-  test('bitwise NOT', () => expect(ev('~5')).toBe(-6));
-  test('left shift', () => expect(ev('1 << 8')).toBe(256));
-  test('unsigned right shift', () => expect(ev('-1 >>> 0')).toBe(4294967295));
+  test('modulo', () => expect(ev('17 % 5')).toBe(2))
+  test('division', () => expect(ev('7 / 2')).toBe(3.5))
+  test('bitwise NOT', () => expect(ev('~5')).toBe(-6))
+  test('left shift', () => expect(ev('1 << 8')).toBe(256))
+  test('unsigned right shift', () => expect(ev('-1 >>> 0')).toBe(4294967295))
 
   // ── String operations ─────────────────────────────────────────────
-  test('string concatenation', () => expect(ev('"foo" + "bar"')).toBe('foobar'));
-  test('template literal basic', () => expect(ev('`hello world`')).toBe('hello world'));
+  test('string concatenation', () => expect(ev('"foo" + "bar"')).toBe('foobar'))
+  test('template literal basic', () => expect(ev('`hello world`')).toBe('hello world'))
   test('template literal with expression', () =>
-    expect(ev('`${x} + ${y} = ${x + y}`', { x: 3, y: 4 })).toBe('3 + 4 = 7')
-  );
-  test('template literal nested', () =>
-    expect(ev('`${ `inner ${n}` }`', { n: 7 })).toBe('inner 7')
-  );
+    expect(ev('`${x} + ${y} = ${x + y}`', { x: 3, y: 4 })).toBe('3 + 4 = 7'))
+  test('template literal nested', () => expect(ev('`${ `inner ${n}` }`', { n: 7 })).toBe('inner 7'))
   test('tagged template literal', () => {
     const tag = (strings: TemplateStringsArray, ...vals: unknown[]) =>
-      strings.raw.join('') + '|' + vals.join(',')
+      `${strings.raw.join('')}|${vals.join(',')}`
     expect(ev('tag`a${1}b${2}c`', { tag }, ALLOW_ALL_CALLS)).toBe('abc|1,2')
-  });
+  })
   test('tagged template literal preserves method receivers', () => {
-    expect(ev('obj.tag`x`', {
-      obj: {
-        value: 42,
-        tag(this: { value: number }, strings: TemplateStringsArray) {
-          return this.value + strings.length - 1
+    expect(
+      ev(
+        'obj.tag`x`',
+        {
+          obj: {
+            value: 42,
+            tag(this: { value: number }, strings: TemplateStringsArray) {
+              return this.value + strings.length - 1
+            },
+          },
         },
-      },
-    }, ALLOW_ALL_CALLS)).toBe(42)
-  });
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe(42)
+  })
   test('template literal can be disabled', () => {
     expect(() => ev('`hello`', {}, { allowTemplateLiterals: false })).toThrow('not enabled')
-  });
+  })
   test('tagged template literal can be disabled independently', () => {
-    expect(() => ev('tag`hello`', { tag: (strings: TemplateStringsArray) => strings[0] }, {
-      allowTaggedTemplates: false,
-    })).toThrow('not enabled')
-  });
+    expect(() =>
+      ev(
+        'tag`hello`',
+        { tag: (strings: TemplateStringsArray) => strings[0] },
+        {
+          allowTaggedTemplates: false,
+        },
+      ),
+    ).toThrow('not enabled')
+  })
   test('tagged template literal passes a cached spec-like template object by default', () => {
     const seen: TemplateStringsArray[] = []
     const compiled = compileExpression('tag`a\\nb${value}c`', ALLOW_ALL_CALLS)
@@ -134,20 +165,21 @@ describe("evaluator", () => {
     })
     expect(seen[0]).toBe(seen[1])
     expect(second).toEqual(first)
-  });
+  })
   test('compiled expressions do not leak nested evaluation context', () => {
     const compiled = compileExpression('fn(value) + value', ALLOW_ALL_CALLS)
 
     const result = compiled.evaluate({
       value: 1,
-      fn: (value: number) => compiled.evaluate({
-        value: value + 1,
-        fn: (inner: number) => inner * 2,
-      }),
+      fn: (value: number) =>
+        compiled.evaluate({
+          value: value + 1,
+          fn: (inner: number) => inner * 2,
+        }),
     })
 
     expect(result).toBe(7)
-  });
+  })
   test('tagged template literal supports loose array emulation mode', () => {
     const tag = (strings: TemplateStringsArray) => ({
       frozen: Object.isFrozen(strings),
@@ -155,97 +187,89 @@ describe("evaluator", () => {
       rawEnumerable: Object.prototype.propertyIsEnumerable.call(strings, 'raw'),
     })
 
-    expect(ev('tag`x`', { tag }, { ...ALLOW_ALL_CALLS, taggedTemplateArrayMode: 'loose' })).toEqual({
-      frozen: false,
-      rawFrozen: false,
-      rawEnumerable: true,
-    })
-  });
+    expect(ev('tag`x`', { tag }, { ...ALLOW_ALL_CALLS, taggedTemplateArrayMode: 'loose' })).toEqual(
+      {
+        frozen: false,
+        rawFrozen: false,
+        rawEnumerable: true,
+      },
+    )
+  })
   test('untagged template literal rejects invalid escapes', () => {
     expect(() => ev('`bad \\u{110000}`')).toThrow('Invalid escape sequence')
-  });
+  })
   test('tagged template literal preserves raw text and undefined cooked values for invalid escapes', () => {
     const tag = (strings: TemplateStringsArray) => [strings[0], strings.raw[0]]
-    expect(ev('tag`bad \\u{110000}`', { tag }, ALLOW_ALL_CALLS)).toEqual([undefined, 'bad \\u{110000}'])
-  });
+    expect(ev('tag`bad \\u{110000}`', { tag }, ALLOW_ALL_CALLS)).toEqual([
+      undefined,
+      'bad \\u{110000}',
+    ])
+  })
   test('template placeholder expressions handle regex literals, comments, and nested braces', () => {
-    expect(ev('`${ /* keep */ /a{2}/.test(text) ? `{${value}}` : "no" }`', {
-      text: 'aa',
-      value: 'x',
-    }, ALLOW_ALL_CALLS)).toBe('{x}')
-  });
+    expect(
+      ev(
+        '`${ /* keep */ /a{2}/.test(text) ? `{${value}}` : "no" }`',
+        {
+          text: 'aa',
+          value: 'x',
+        },
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe('{x}')
+  })
 
   // ── Member access ─────────────────────────────────────────────────
-  test('dot member access', () =>
-    expect(ev('obj.name', { obj: { name: 'Alice' } })).toBe('Alice')
-  );
-  test('computed member access', () =>
-    expect(ev('obj["key"]', { obj: { key: 42 } })).toBe(42)
-  );
-  test('chained member access', () =>
-    expect(ev('a.b.c', { a: { b: { c: 99 } } })).toBe(99)
-  );
-  test('optional chaining: null base', () =>
-    expect(ev('obj?.name', { obj: null })).toBe(undefined)
-  );
+  test('dot member access', () => expect(ev('obj.name', { obj: { name: 'Alice' } })).toBe('Alice'))
+  test('computed member access', () => expect(ev('obj["key"]', { obj: { key: 42 } })).toBe(42))
+  test('chained member access', () => expect(ev('a.b.c', { a: { b: { c: 99 } } })).toBe(99))
+  test('optional chaining: null base', () => expect(ev('obj?.name', { obj: null })).toBe(undefined))
   test('optional chaining: defined base', () =>
-    expect(ev('obj?.name', { obj: { name: 'Bob' } })).toBe('Bob')
-  );
+    expect(ev('obj?.name', { obj: { name: 'Bob' } })).toBe('Bob'))
   test('optional chaining: computed', () =>
-    expect(ev('obj?.[key]', { obj: null, key: 'x' })).toBe(undefined)
-  );
-  test('optional chaining: call', () =>
-    expect(ev('fn?.()', { fn: null })).toBe(undefined)
-  );
-  test('array index', () =>
-    expect(ev('arr[1]', { arr: [10, 20, 30] })).toBe(20)
-  );
+    expect(ev('obj?.[key]', { obj: null, key: 'x' })).toBe(undefined))
+  test('optional chaining: call', () => expect(ev('fn?.()', { fn: null })).toBe(undefined))
+  test('array index', () => expect(ev('arr[1]', { arr: [10, 20, 30] })).toBe(20))
 
   // ── Function calls ────────────────────────────────────────────────
   test('simple call', () =>
-    expect(ev('double(5)', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10)
-  );
+    expect(ev('double(5)', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10))
   test('method call', () =>
-    expect(ev('obj.greet("world")', { obj: { greet: (s: string) => `Hello, ${s}!` } }, ALLOW_ALL_CALLS)).toBe('Hello, world!')
-  );
+    expect(
+      ev('obj.greet("world")', { obj: { greet: (s: string) => `Hello, ${s}!` } }, ALLOW_ALL_CALLS),
+    ).toBe('Hello, world!'))
   test('spread in call args', () =>
-    expect(ev('Math.max(...nums)', { Math, nums: [1, 5, 3, 7, 2] })).toBe(7)
-  );
-  test('chained calls', () =>
-    expect(ev('"  hello  ".trim().toUpperCase()', {})).toBe('HELLO')
-  );
+    expect(ev('Math.max(...nums)', { Math, nums: [1, 5, 3, 7, 2] })).toBe(7))
+  test('chained calls', () => expect(ev('"  hello  ".trim().toUpperCase()', {})).toBe('HELLO'))
+  test('default call policy allows newer safe string methods', () => {
+    expect(ev('"A\u030A".normalize("NFC")')).toBe('Å')
+    expect(ev('"😊".codePointAt(0)')).toBe(0x1f60a)
+  })
+  test('default call policy allows newer safe array methods', () => {
+    expect(ev('[1, [2, [3]]].flat(2)')).toEqual([1, 2, 3])
+  })
 
   // ── Array and object literals ─────────────────────────────────────
-  test('array literal', () => expect(ev('[1, 2, 3]')).toEqual([1, 2, 3]));
-  test('array spread', () =>
-    expect(ev('[...a, 4]', { a: [1, 2, 3] })).toEqual([1, 2, 3, 4])
-  );
-  test('object literal', () =>
-    expect(ev('({ a: 1, b: 2 })')).toEqual({ a: 1, b: 2 })
-  );
+  test('array literal', () => expect(ev('[1, 2, 3]')).toEqual([1, 2, 3]))
+  test('array spread', () => expect(ev('[...a, 4]', { a: [1, 2, 3] })).toEqual([1, 2, 3, 4]))
+  test('object literal', () => expect(ev('({ a: 1, b: 2 })')).toEqual({ a: 1, b: 2 }))
   test('object shorthand', () =>
-    expect(ev('({ x, y })', { x: 10, y: 20 })).toEqual({ x: 10, y: 20 })
-  );
+    expect(ev('({ x, y })', { x: 10, y: 20 })).toEqual({ x: 10, y: 20 }))
   test('object computed key', () =>
-    expect(ev('({ [key]: 99 })', { key: 'dynamic' })).toEqual({ dynamic: 99 })
-  );
+    expect(ev('({ [key]: 99 })', { key: 'dynamic' })).toEqual({ dynamic: 99 }))
   test('object spread', () =>
-    expect(ev('({ ...base, c: 3 })', { base: { a: 1, b: 2 } })).toEqual({ a: 1, b: 2, c: 3 })
-  );
+    expect(ev('({ ...base, c: 3 })', { base: { a: 1, b: 2 } })).toEqual({ a: 1, b: 2, c: 3 }))
 
   // ── typeof / void ─────────────────────────────────────────────────
-  test('typeof number', () => expect(ev('typeof 42')).toBe('number'));
-  test('typeof string', () => expect(ev('typeof "hi"')).toBe('string'));
-  test('typeof undefined identifier', () => expect(ev('typeof nope')).toBe('undefined'));
-  test('void 0', () => expect(ev('void 0')).toBe(undefined));
+  test('typeof number', () => expect(ev('typeof 42')).toBe('number'))
+  test('typeof string', () => expect(ev('typeof "hi"')).toBe('string'))
+  test('typeof undefined identifier', () => expect(ev('typeof nope')).toBe('undefined'))
+  test('void 0', () => expect(ev('void 0')).toBe(undefined))
 
   // ── Pipeline operator |> ──────────────────────────────────────────
   test('pipeline basic', () =>
-    expect(ev('5 |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10)
-  );
+    expect(ev('5 |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10))
   test('pipeline chained', () =>
-    expect(ev('5 |> double |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(20)
-  );
+    expect(ev('5 |> double |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(20))
   test('pipeline right-assoc: (5 |> (fn |> compose))', () => {
     // right-assoc means 5 |> (double |> triple) which is: (double |> triple)(5)
     // But in Hack-style |>, we want left-to-right piping
@@ -253,86 +277,81 @@ describe("evaluator", () => {
     // This composes functions rather than pipes values
     // For clarity, let's just test a simple pipeline
     expect(ev('10 |> half', { half: (x: number) => x / 2 }, ALLOW_ALL_CALLS)).toBe(5)
-  });
+  })
 
   // ── in operator ───────────────────────────────────────────────────
   test('in operator', () =>
-    expect(ev('"x" in obj', { obj: { x: 1 } }, { allowIn: true })).toBe(true)
-  );
+    expect(ev('"x" in obj', { obj: { x: 1 } }, { allowIn: true })).toBe(true))
   test('in operator: missing key', () =>
-    expect(ev('"y" in obj', { obj: { x: 1 } }, { allowIn: true })).toBe(false)
-  );
+    expect(ev('"y" in obj', { obj: { x: 1 } }, { allowIn: true })).toBe(false))
   test('in operator throws for primitive right-hand sides', () => {
     expect(() => ev('"x" in value', { value: 1 }, { allowIn: true })).toThrow(TypeError)
-  });
+  })
   test('in operator accepts functions on the right-hand side', () => {
     expect(ev('"apply" in fn', { fn: () => undefined }, { allowIn: true })).toBe(true)
-  });
+  })
   test('instanceof operator', () =>
-    expect(ev('arr instanceof Array', { arr: [1, 2], Array })).toBe(true)
-  );
+    expect(ev('arr instanceof Array', { arr: [1, 2], Array })).toBe(true))
 
   // ── Comma / sequence ─────────────────────────────────────────────
   test('sequence operator returns the last expression result', () => {
     expect(ev('1, 2, 3')).toBe(3)
-  });
+  })
   test('sequence operator evaluates expressions from left to right', () => {
     const seen: number[] = []
 
-    expect(ev('push(1), push(2), push(3)', {
-      push(value: number) {
-        seen.push(value)
-        return value
-      },
-    }, ALLOW_ALL_CALLS)).toBe(3)
+    expect(
+      ev(
+        'push(1), push(2), push(3)',
+        {
+          push(value: number) {
+            seen.push(value)
+            return value
+          },
+        },
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe(3)
     expect(seen).toEqual([1, 2, 3])
-  });
+  })
   test('parseExpression emits sequence nodes for comma expressions', () => {
     const parsed = parseExpression('1, 2, 3')
 
     expect(parsed.type).toBe('sequence')
     if (parsed.type !== 'sequence') throw new Error('Expected a sequence node')
     expect(parsed.expressions).toHaveLength(3)
-  });
+  })
 
   // ── Security / sandbox ───────────────────────────────────────────
-  test('blocked global: eval', () =>
-    expect(() => ev('eval("1+1")')).toThrow('not permitted')
-  );
+  test('blocked global: eval', () => expect(() => ev('eval("1+1")')).toThrow('not permitted'))
   test('blocked global: Function', () =>
-    expect(() => ev('Function("return 1")')).toThrow('not permitted')
-  );
-  test('blocked global: process', () =>
-    expect(() => ev('process.env')).toThrow('not permitted')
-  );
-  test('blocked global: globalThis', () =>
-    expect(() => ev('globalThis')).toThrow('not permitted')
-  );
+    expect(() => ev('Function("return 1")')).toThrow('not permitted'))
+  test('blocked global: process', () => expect(() => ev('process.env')).toThrow('not permitted'))
+  test('blocked global: globalThis', () => expect(() => ev('globalThis')).toThrow('not permitted'))
   test('blocked property: __proto__', () =>
-    expect(() => ev('obj.__proto__', { obj: {} })).toThrow('not permitted')
-  );
+    expect(() => ev('obj.__proto__', { obj: {} })).toThrow('not permitted'))
   test('blocked property: constructor', () =>
-    expect(() => ev('obj.constructor', { obj: {} })).toThrow('not permitted')
-  );
+    expect(() => ev('obj.constructor', { obj: {} })).toThrow('not permitted'))
   test('blocked property via computed access', () =>
-    expect(() => ev('obj["__proto__"]', { obj: {} })).toThrow('not permitted')
-  );
+    expect(() => ev('obj["__proto__"]', { obj: {} })).toThrow('not permitted'))
   test('default call policy blocks custom function calls', () => {
     expect(() => ev('double(5)', { double: (x: number) => x * 2 })).toThrow('not permitted')
-  });
+  })
   test('calls can be disabled entirely with allowCalls=false', () => {
     expect(() => ev('Math.max(1, 2)', { Math }, { allowCalls: false })).toThrow('not enabled')
-  });
+  })
   test('regex literals can be disabled with allowRegexLiterals=false', () => {
     expect(() => ev('/abc/', {}, { allowRegexLiterals: false })).toThrow('not enabled')
-  });
+  })
   test('default root context mode rejects non-plain objects', () => {
     class Scope {
       count = 2
     }
 
-    expect(() => evaluate('count', new Scope() as unknown as Record<string, unknown>)).toThrow('plain object')
-  });
+    expect(() => evaluate('count', new Scope() as unknown as Record<string, unknown>)).toThrow(
+      'plain object',
+    )
+  })
   test('copy-non-plain root context mode preserves own properties only', () => {
     class Scope {
       count = 2
@@ -342,156 +361,180 @@ describe("evaluator", () => {
     expect(
       evaluate('count', new Scope() as unknown as Record<string, unknown>, {
         rootContextMode: 'copy-non-plain-to-null-prototype',
-      })
+      }),
     ).toBe(2)
     expect(() =>
       evaluate('hidden', new Scope() as unknown as Record<string, unknown>, {
         rootContextMode: 'copy-non-plain-to-null-prototype',
-      })
+      }),
     ).toThrow('not defined')
-  });
+  })
   test('default object spread mode filters blocked keys', () => {
     const payload = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>
     const result = ev('({ ...payload })', { payload }) as Record<string, unknown>
 
     expect(result.ok).toBe(1)
     expect(Object.getPrototypeOf(result)).not.toHaveProperty('polluted')
-  });
+  })
   test('object spread mode none keeps legacy spread behavior', () => {
     const payload = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>
-    const result = ev('({ ...payload })', { payload }, { objectLiteralMode: 'none' }) as Record<string, unknown>
+    const result = ev('({ ...payload })', { payload }, { objectLiteralMode: 'none' }) as Record<
+      string,
+      unknown
+    >
 
     expect(Object.getPrototypeOf(result)).toHaveProperty('polluted', true)
-  });
+  })
   test('object spread plain-object-only mode rejects arrays', () => {
-    expect(() => ev('({ ...items })', { items: [1, 2, 3] }, { objectLiteralMode: 'plain-object-only' })).toThrow('plain object')
-  });
+    expect(() =>
+      ev('({ ...items })', { items: [1, 2, 3] }, { objectLiteralMode: 'plain-object-only' }),
+    ).toThrow('plain object')
+  })
   test('object spread safe mode returns null-prototype objects', () => {
     const result = ev('({ a: 1 })', {}, { objectLiteralMode: 'safe' }) as Record<string, unknown>
 
     expect(Object.getPrototypeOf(result)).toBe(null)
     expect(result.a).toBe(1)
-  });
+  })
   test('max source length rejects oversized expressions', () => {
-    expect(() => parseExpression('count + 1', { maxSourceLength: 5 })).toThrow('maximum source length')
-  });
+    expect(() => parseExpression('count + 1', { maxSourceLength: 5 })).toThrow(
+      'maximum source length',
+    )
+  })
   test('max AST nodes rejects oversized trees', () => {
     expect(() => parseExpression('1 + 2 * 3', { maxAstNodes: 4 })).toThrow('maximum AST node count')
-  });
+  })
   test('max AST depth rejects deep trees', () => {
-    expect(() => parseExpression('a + (b * (c - d))', { maxAstDepth: 3 })).toThrow('maximum AST depth')
-  });
+    expect(() => parseExpression('a + (b * (c - d))', { maxAstDepth: 3 })).toThrow(
+      'maximum AST depth',
+    )
+  })
   test('max steps rejects expensive evaluations', () => {
     expect(() => ev('1 + 2 + 3', {}, { maxSteps: 4 })).toThrow('Maximum evaluation steps')
-  });
+  })
   test('undefined variable throws JSEvalError', () =>
-    expect(() => ev('notDefined')).toThrow('not defined')
-  );
+    expect(() => ev('notDefined')).toThrow('not defined'))
   test('member of null throws descriptively', () =>
-    expect(() => ev('x.y', { x: null })).toThrow('null')
-  );
+    expect(() => ev('x.y', { x: null })).toThrow('null'))
   test('non-function call throws descriptively', () =>
-    expect(() => ev('x()', { x: 42 })).toThrow('not a function')
-  );
+    expect(() => ev('x()', { x: 42 })).toThrow('not a function'))
 
   // ── Error position info ───────────────────────────────────────────
   test('parse error reports position', () => {
     let error: JSParseError | undefined
-    try { evaluate('1 + * 2') }
-    catch (e) { error = e as JSParseError }
-    if (!error || !(error instanceof JSParseError))
-      throw new Error('Expected JSParseError')
+    try {
+      evaluate('1 + * 2')
+    } catch (e) {
+      error = e as JSParseError
+    }
+    if (!error || !(error instanceof JSParseError)) throw new Error('Expected JSParseError')
     if (error.start === undefined || error.start < 0)
       throw new Error(`Expected start position, got: ${error.start}`)
-  });
+  })
   test('parse error message contains source snippet', () => {
     let error: JSParseError | undefined
-    try { evaluate('foo + * bar') }
-    catch (e) { error = e as JSParseError }
+    try {
+      evaluate('foo + * bar')
+    } catch (e) {
+      error = e as JSParseError
+    }
     if (!error?.message.includes('foo + * bar'))
       throw new Error(`Expected snippet in error message, got: ${error?.message}`)
-  });
+  })
   test('lex error reports position', () => {
     let error: JSLexError | undefined
-    try { evaluate('1 + @bad') }
-    catch (e) { error = e as JSLexError }
-    if (!error || !(error instanceof JSLexError))
-      throw new Error('Expected JSLexError')
-    if (typeof error.pos !== 'number')
-      throw new Error('Expected pos property')
-  });
+    try {
+      evaluate('1 + @bad')
+    } catch (e) {
+      error = e as JSLexError
+    }
+    if (!error || !(error instanceof JSLexError)) throw new Error('Expected JSLexError')
+    if (typeof error.pos !== 'number') throw new Error('Expected pos property')
+  })
   test('eval error reports meaningful message for chained access', () => {
     let error: JSEvalError | undefined
-    try { evaluate('a.b.c', { a: {} }) }
-    catch (e) { error = e as JSEvalError }
+    try {
+      evaluate('a.b.c', { a: {} })
+    } catch (e) {
+      error = e as JSEvalError
+    }
     if (!error?.message.includes('undefined'))
       throw new Error(`Expected mention of 'undefined', got: ${error?.message}`)
-  });
+  })
   test('unterminated string lex error', () =>
-    expect(() => evaluate('"unterminated')).toThrow('position')
-  );
+    expect(() => evaluate('"unterminated')).toThrow('position'))
   test('unexpected token parse error points to the bad token', () => {
     let error: JSParseError | undefined
-    try { evaluate('1 2') }  // two adjacent expressions
-    catch (e) { error = e as JSParseError }
-    if (!error || !(error instanceof JSParseError))
-      throw new Error('Expected JSParseError')
+    try {
+      evaluate('1 2')
+    } catch (e) {
+      // two adjacent expressions
+      error = e as JSParseError
+    }
+    if (!error || !(error instanceof JSParseError)) throw new Error('Expected JSParseError')
     // The position should point at the '2', which starts at offset 2
-    if (error.start !== 2)
-      throw new Error(`Expected start=2, got ${error.start}`)
-  });
+    if (error.start !== 2) throw new Error(`Expected start=2, got ${error.start}`)
+  })
 
   // ── Forbidden constructs ──────────────────────────────────────────
   test('assignment throws ParseError', () =>
-    expect(() => evaluate('x = 1', { x: 1 })).toThrow('not allowed')
-  );
+    expect(() => evaluate('x = 1', { x: 1 })).toThrow('not allowed'))
   test('compound assignment throws ParseError', () =>
-    expect(() => evaluate('x += 1', { x: 1 })).toThrow('not allowed')
-  );
+    expect(() => evaluate('x += 1', { x: 1 })).toThrow('not allowed'))
   test('new keyword throws ParseError', () =>
-    expect(() => evaluate('new Date()')).toThrow("'new' is not allowed")
-  );
+    expect(() => evaluate('new Date()')).toThrow("'new' is not allowed"))
   test('delete keyword throws ParseError', () =>
-    expect(() => evaluate('delete obj.x', { obj: { x: 1 } })).toThrow("'delete' is not allowed")
-  );
+    expect(() => evaluate('delete obj.x', { obj: { x: 1 } })).toThrow("'delete' is not allowed"))
   test('prefix ++ throws ParseError', () =>
-    expect(() => evaluate('++x', { x: 1 })).toThrow('not allowed')
-  );
+    expect(() => evaluate('++x', { x: 1 })).toThrow('not allowed'))
   test('await without option throws ParseError', () =>
-    expect(() => evaluate('await p', { p: Promise.resolve(1) })).toThrow('not enabled')
-  );
+    expect(() => evaluate('await p', { p: Promise.resolve(1) })).toThrow('not enabled'))
   test('await with option works', () => {
     // In sync mode, await just passes through the value
     const result = evaluate('await 42', {}, { allowAwait: true })
     expect(result).toBe(42)
-  });
+  })
 
   // ── Complex real-world template-style expressions ─────────────────
   test('conditional rendering idiom', () =>
-    expect(ev('items.length > 0 ? items.join(", ") : "none"', { items: ['a', 'b', 'c'] }, ALLOW_ALL_CALLS)).toBe('a, b, c')
-  );
+    expect(
+      ev(
+        'items.length > 0 ? items.join(", ") : "none"',
+        { items: ['a', 'b', 'c'] },
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe('a, b, c'))
   test('safe navigation with fallback', () =>
-    expect(ev('user?.profile?.bio ?? "No bio"', { user: { profile: null } })).toBe('No bio')
-  );
+    expect(ev('user?.profile?.bio ?? "No bio"', { user: { profile: null } })).toBe('No bio'))
   test('array map and join', () =>
-    expect(ev('items.map(fn).join(" | ")', {
-      items: [1, 2, 3],
-      fn: (x: number) => x * x,
-    }, ALLOW_ALL_CALLS)).toBe('1 | 4 | 9')
-  );
+    expect(
+      ev(
+        'items.map(fn).join(" | ")',
+        {
+          items: [1, 2, 3],
+          fn: (x: number) => x * x,
+        },
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe('1 | 4 | 9'))
   test('object property access and formatting', () =>
-    expect(ev('`${user.firstName} ${user.lastName} (${user.age})`', {
-      user: { firstName: 'Jane', lastName: 'Doe', age: 30 },
-    })).toBe('Jane Doe (30)')
-  );
+    expect(
+      ev('`${user.firstName} ${user.lastName} (${user.age})`', {
+        user: { firstName: 'Jane', lastName: 'Doe', age: 30 },
+      }),
+    ).toBe('Jane Doe (30)'))
   test('pipeline for data transformation', () =>
-    expect(ev('"  hello  " |> trim |> upper', {
-      trim: (s: string) => s.trim(),
-      upper: (s: string) => s.toUpperCase(),
-    }, ALLOW_ALL_CALLS)).toBe('HELLO')
-  );
-  test('numeric separator in source', () =>
-    expect(ev('1_000_000 + 234_567')).toBe(1234567)
-  );
+    expect(
+      ev(
+        '"  hello  " |> trim |> upper',
+        {
+          trim: (s: string) => s.trim(),
+          upper: (s: string) => s.toUpperCase(),
+        },
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe('HELLO'))
+  test('numeric separator in source', () => expect(ev('1_000_000 + 234_567')).toBe(1234567))
+})
 
-});
+// #endregion

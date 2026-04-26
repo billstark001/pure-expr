@@ -121,7 +121,9 @@ renderTemplate(...) also accepts evalOptions plus template-level maxSourceLength
 
 ## Notes And Limits
 
-- The package is ESM-only. CommonJS require() is not supported.
+- The published package now ships both ESM and CommonJS entrypoints. import resolves to the ESM build by default, while require() resolves to the CJS build.
+- The emitted package syntax targets ES2015 for distribution compatibility, but that is not a full ES2015 runtime guarantee. The evaluator still exposes newer language/runtime features such as bigint handling and whichever standard-library methods exist in the host runtime.
+- In practice, ES2015 is a reasonable emit baseline for bundlers and downstream transpilers, but it is not sufficient if you need this package itself to run unchanged on old engines with no bigint or newer built-ins.
 - Expressions are intentionally read-only. Statements and assignment operators are rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
 - Root evaluation contexts must be plain objects or null-prototype objects by default. Use rootContextMode to opt into copying non-plain roots or allowing them unchanged.
@@ -135,6 +137,8 @@ renderTemplate(...) also accepts evalOptions plus template-level maxSourceLength
 
 ```sh
 pnpm install
+pnpm run format
+pnpm run lint
 pnpm run bench:expr
 pnpm run ci
 ```

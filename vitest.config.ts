@@ -1,4 +1,6 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config'
+
+// #region Test configuration
 
 export default defineConfig({
   test: {
@@ -11,4 +13,6 @@ export default defineConfig({
       include: ['src/**/*.ts'],
     },
   },
-});
+})
+
+// #endregion

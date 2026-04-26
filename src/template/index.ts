@@ -1,3 +1,5 @@
+// #region Public template entrypoints
+
 export {
   parseTemplate,
   type TemplateParseOptions,
@@ -6,11 +8,13 @@ export {
   type TemplateParseResult,
   type TemplateExpressionSegment,
   type TemplateTextSegment,
-} from './parser.js';
+} from './parser.js'
 
 export {
   renderTemplate,
   type TemplateFormat,
   type RenderTemplateOptions,
   type TemplateRenderResult,
-} from './renderer.js';
+} from './renderer.js'
+
+// #endregion

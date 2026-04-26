@@ -1,6 +1,19 @@
-import { cookTemplate, JSToken, JSTokenKind } from "./lexer.js"
-import { JSExprNode, JSMemberNode, JSCallNode, JSConditionalNode, JSBinaryNode, JSLogicalNode, JSPipelineNode, JSSpreadNode, JSObjectPropNode, JSSequenceNode, JSTemplateNode } from "./node-types.js"
+import { cookTemplate, type JSToken, type JSTokenKind } from './lexer.js'
+import type {
+  JSExprNode,
+  JSMemberNode,
+  JSCallNode,
+  JSConditionalNode,
+  JSBinaryNode,
+  JSLogicalNode,
+  JSPipelineNode,
+  JSSpreadNode,
+  JSObjectPropNode,
+  JSSequenceNode,
+  JSTemplateNode,
+} from './node-types.js'
 
+// #region Parse helpers, errors, and options
 
 function parseStringValue(raw: string): string {
   // strip quotes and handle escapes
@@ -14,15 +27,16 @@ export class JSParseError extends Error {
   token?: JSToken
 
   constructor(message: string, token?: JSToken, src = '') {
-    const pos =
-      token?.start !== undefined ? ` at position ${token.start}–${token.end}` : ''
+    const pos = token?.start !== undefined ? ` at position ${token.start}–${token.end}` : ''
     // Source context snippet with pointer
     let snippet = ''
     if (src && token?.start !== undefined) {
       const lo = Math.max(0, token.start - 20)
       const hi = Math.min(src.length, (token.end ?? token.start) + 20)
       const line = src.slice(lo, hi)
-      const ptr = ' '.repeat(token.start - lo) + '~'.repeat(Math.max(1, (token.end ?? token.start + 1) - token.start))
+      const ptr =
+        ' '.repeat(token.start - lo) +
+        '~'.repeat(Math.max(1, (token.end ?? token.start + 1) - token.start))
       snippet = `\n  ${line}\n  ${ptr}`
     }
     super(message + pos + snippet)
@@ -49,6 +63,10 @@ export interface JSParserOptions {
   maxTemplateExpressions?: number
 }
 
+// #endregion
+
+// #region Parser precedence and grammar guards
+
 // Operator precedence table (higher = tighter binding)
 const PREC = {
   COMMA: 1,
@@ -71,30 +89,68 @@ const PREC = {
 } as const
 
 const INFIX_PREC: Record<string, number> = {
-  '||': PREC.OR, '??': PREC.NULLCOAL,
+  '||': PREC.OR,
+  '??': PREC.NULLCOAL,
   '&&': PREC.AND,
-  '|': PREC.BITOR, '^': PREC.BITXOR, '&': PREC.BITAND,
-  '==': PREC.EQUALITY, '!=': PREC.EQUALITY,
-  '===': PREC.EQUALITY, '!==': PREC.EQUALITY,
-  '<': PREC.RELATIONAL, '>': PREC.RELATIONAL,
-  '<=': PREC.RELATIONAL, '>=': PREC.RELATIONAL,
-  'instanceof': PREC.RELATIONAL,
-  '<<': PREC.SHIFT, '>>': PREC.SHIFT, '>>>': PREC.SHIFT,
-  '+': PREC.ADD, '-': PREC.ADD,
-  '*': PREC.MUL, '/': PREC.MUL, '%': PREC.MUL,
-  '**': PREC.EXP,  // right-assoc
-  '|>': PREC.PIPELINE,  // right-assoc (Hack-style)
+  '|': PREC.BITOR,
+  '^': PREC.BITXOR,
+  '&': PREC.BITAND,
+  '==': PREC.EQUALITY,
+  '!=': PREC.EQUALITY,
+  '===': PREC.EQUALITY,
+  '!==': PREC.EQUALITY,
+  '<': PREC.RELATIONAL,
+  '>': PREC.RELATIONAL,
+  '<=': PREC.RELATIONAL,
+  '>=': PREC.RELATIONAL,
+  instanceof: PREC.RELATIONAL,
+  '<<': PREC.SHIFT,
+  '>>': PREC.SHIFT,
+  '>>>': PREC.SHIFT,
+  '+': PREC.ADD,
+  '-': PREC.ADD,
+  '*': PREC.MUL,
+  '/': PREC.MUL,
+  '%': PREC.MUL,
+  '**': PREC.EXP, // right-assoc
+  '|>': PREC.PIPELINE, // right-assoc (Hack-style)
 }
 
 const RIGHT_ASSOC = new Set(['**'])
 const FORBIDDEN_ASSIGNMENT_OPERATORS = new Set([
-  '=', '+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=',
-  '<<=', '>>=', '>>>=', '&&=', '||=', '??=',
+  '=',
+  '+=',
+  '-=',
+  '*=',
+  '/=',
+  '%=',
+  '**=',
+  '&=',
+  '|=',
+  '^=',
+  '<<=',
+  '>>=',
+  '>>>=',
+  '&&=',
+  '||=',
+  '??=',
 ])
 const FORBIDDEN_PREFIX_IDENTIFIERS = new Set([
-  'new', 'delete', 'yield', 'return', 'throw',
-  'var', 'let', 'const', 'function', 'class',
+  'new',
+  'delete',
+  'yield',
+  'return',
+  'throw',
+  'var',
+  'let',
+  'const',
+  'function',
+  'class',
 ])
+
+// #endregion
+
+// #region Public parser
 
 /** Pratt-style parser that converts tokens into expression AST nodes. */
 export class JSExpressionParser {
@@ -105,20 +161,17 @@ export class JSExpressionParser {
   constructor(
     private readonly tokens: JSToken[],
     private readonly opts: JSParserOptions = {},
-    src = ''
+    src = '',
   ) {
     this.src = src
   }
 
   parse(): JSExprNode {
-    if (this.tokens.length === 0)
-      throw new JSParseError('Empty expression')
+    if (this.tokens.length === 0) throw new JSParseError('Empty expression')
     const node = this.parseExpr(0)
     if (this.pos < this.tokens.length) {
       const t = this.peek()!
-      throw new JSParseError(
-        `Unexpected token '${t.raw}' after expression`, t, this.src
-      )
+      throw new JSParseError(`Unexpected token '${t.raw}' after expression`, t, this.src)
     }
     return node
   }
@@ -127,7 +180,7 @@ export class JSExpressionParser {
   private parseExpr(minPrec: number): JSExprNode {
     let left = this.parsePrimary()
 
-    for (; ;) {
+    for (;;) {
       const t = this.peek()
       if (!t) break
 
@@ -136,9 +189,13 @@ export class JSExpressionParser {
         this.advance()
         const prop = this.expect('identifier', 'Expected property name after .')
         left = {
-          type: 'member', object: left,
+          type: 'member',
+          object: left,
           property: { type: 'identifier', name: prop.raw, start: prop.start, end: prop.end },
-          computed: false, optional: false, start: t.start, end: prop.end,
+          computed: false,
+          optional: false,
+          start: t.start,
+          end: prop.end,
         } satisfies JSMemberNode
         continue
       }
@@ -149,18 +206,37 @@ export class JSExpressionParser {
         if (next?.kind === 'op' && next.raw === '(') {
           this.advance()
           const args = this.parseArgList()
-          left = { type: 'call', callee: left, args, optional: true, start: t.start, end: this.lastEnd() } satisfies JSCallNode
+          left = {
+            type: 'call',
+            callee: left,
+            args,
+            optional: true,
+            start: t.start,
+            end: this.lastEnd(),
+          } satisfies JSCallNode
         } else if (next?.kind === 'op' && next.raw === '[') {
           this.advance()
           const prop = this.parseExpr(0)
           this.expectOp(']')
-          left = { type: 'member', object: left, property: prop, computed: true, optional: true, start: t.start, end: this.lastEnd() } satisfies JSMemberNode
+          left = {
+            type: 'member',
+            object: left,
+            property: prop,
+            computed: true,
+            optional: true,
+            start: t.start,
+            end: this.lastEnd(),
+          } satisfies JSMemberNode
         } else {
           const prop = this.expect('identifier', 'Expected identifier after ?.')
           left = {
-            type: 'member', object: left,
+            type: 'member',
+            object: left,
             property: { type: 'identifier', name: prop.raw, start: prop.start, end: prop.end },
-            computed: false, optional: true, start: t.start, end: prop.end,
+            computed: false,
+            optional: true,
+            start: t.start,
+            end: prop.end,
           } satisfies JSMemberNode
         }
         continue
@@ -170,14 +246,29 @@ export class JSExpressionParser {
         this.advance()
         const prop = this.parseExpr(0)
         this.expectOp(']')
-        left = { type: 'member', object: left, property: prop, computed: true, optional: false, start: t.start, end: this.lastEnd() } satisfies JSMemberNode
+        left = {
+          type: 'member',
+          object: left,
+          property: prop,
+          computed: true,
+          optional: false,
+          start: t.start,
+          end: this.lastEnd(),
+        } satisfies JSMemberNode
         continue
       }
 
       if (t.kind === 'op' && t.raw === '(' && PREC.POSTFIX >= minPrec) {
         this.advance()
         const args = this.parseArgList()
-        left = { type: 'call', callee: left, args, optional: false, start: t.start, end: this.lastEnd() } satisfies JSCallNode
+        left = {
+          type: 'call',
+          callee: left,
+          args,
+          optional: false,
+          start: t.start,
+          end: this.lastEnd(),
+        } satisfies JSCallNode
         continue
       }
 
@@ -187,7 +278,7 @@ export class JSExpressionParser {
           throw new JSParseError(
             'Tagged template literals are not enabled in this context (pass { allowTaggedTemplates: true })',
             t,
-            this.src
+            this.src,
           )
         }
         this.advance()
@@ -202,7 +293,14 @@ export class JSExpressionParser {
         const consequent = this.parseExpr(0)
         this.expectOp(':', 'Expected `:` in ternary expression')
         const alternate = this.parseExpr(PREC.CONDITIONAL)
-        left = { type: 'conditional', test: left, consequent, alternate, start: t.start, end: this.lastEnd() } satisfies JSConditionalNode
+        left = {
+          type: 'conditional',
+          test: left,
+          consequent,
+          alternate,
+          start: t.start,
+          end: this.lastEnd(),
+        } satisfies JSConditionalNode
         continue
       }
 
@@ -212,9 +310,7 @@ export class JSExpressionParser {
         const right = this.parseExpr(PREC.COMMA + 1)
         left = {
           type: 'sequence',
-          expressions: left.type === 'sequence'
-            ? [...left.expressions, right]
-            : [left, right],
+          expressions: left.type === 'sequence' ? [...left.expressions, right] : [left, right],
           start: left.start,
           end: this.lastEnd(),
         } satisfies JSSequenceNode
@@ -227,7 +323,14 @@ export class JSExpressionParser {
         if (prec < minPrec) break
         this.advance()
         const right = this.parseExpr(prec + 1)
-        left = { type: 'binary', operator: 'in', left, right, start: t.start, end: this.lastEnd() } satisfies JSBinaryNode
+        left = {
+          type: 'binary',
+          operator: 'in',
+          left,
+          right,
+          start: t.start,
+          end: this.lastEnd(),
+        } satisfies JSBinaryNode
         continue
       }
 
@@ -237,7 +340,14 @@ export class JSExpressionParser {
         if (prec < minPrec) break
         this.advance()
         const right = this.parseExpr(prec + 1)
-        left = { type: 'binary', operator: 'instanceof', left, right, start: t.start, end: this.lastEnd() } satisfies JSBinaryNode
+        left = {
+          type: 'binary',
+          operator: 'instanceof',
+          left,
+          right,
+          start: t.start,
+          end: this.lastEnd(),
+        } satisfies JSBinaryNode
         continue
       }
 
@@ -245,7 +355,11 @@ export class JSExpressionParser {
       if (t.kind === 'op') {
         // Block forbidden assignment operators
         if (FORBIDDEN_ASSIGNMENT_OPERATORS.has(t.raw))
-          throw new JSParseError(`Assignment operator '${t.raw}' is not allowed in read-only expressions`, t, this.src)
+          throw new JSParseError(
+            `Assignment operator '${t.raw}' is not allowed in read-only expressions`,
+            t,
+            this.src,
+          )
 
         const prec = INFIX_PREC[t.raw]
         if (prec === undefined || prec < minPrec) break
@@ -258,11 +372,31 @@ export class JSExpressionParser {
         // Logical operators get their own node type
         if (t.raw === '&&' || t.raw === '||' || t.raw === '??') {
           this.assertValidLogicalMixing(t.raw, left, right, t)
-          left = { type: 'logical', operator: t.raw as any, left, right, start: t.start, end: this.lastEnd() } satisfies JSLogicalNode
+          left = {
+            type: 'logical',
+            operator: t.raw as any,
+            left,
+            right,
+            start: t.start,
+            end: this.lastEnd(),
+          } satisfies JSLogicalNode
         } else if (t.raw === '|>') {
-          left = { type: 'pipeline', left, right, start: t.start, end: this.lastEnd() } satisfies JSPipelineNode
+          left = {
+            type: 'pipeline',
+            left,
+            right,
+            start: t.start,
+            end: this.lastEnd(),
+          } satisfies JSPipelineNode
         } else {
-          left = { type: 'binary', operator: t.raw, left, right, start: t.start, end: this.lastEnd() } satisfies JSBinaryNode
+          left = {
+            type: 'binary',
+            operator: t.raw,
+            left,
+            right,
+            start: t.start,
+            end: this.lastEnd(),
+          } satisfies JSBinaryNode
         }
         continue
       }
@@ -281,17 +415,31 @@ export class JSExpressionParser {
     // ── Literals ────────────────────────────────────────────────────
     if (t.kind === 'number') {
       this.advance()
-      const raw = t.raw.replace(/_/g, '')  // numeric separators
+      const raw = t.raw.replace(/_/g, '') // numeric separators
       return { type: 'literal', value: Number(raw), raw: t.raw, start: t.start, end: t.end }
     }
     if (t.kind === 'bigint') {
       this.advance()
-      const raw = t.raw.replace(/_/g, '').slice(0, -1)  // remove 'n'
-      return { type: 'literal', value: BigInt(raw.startsWith('0x') || raw.startsWith('0o') || raw.startsWith('0b') ? raw : raw), raw: t.raw, start: t.start, end: t.end }
+      const raw = t.raw.replace(/_/g, '').slice(0, -1) // remove 'n'
+      return {
+        type: 'literal',
+        value: BigInt(
+          raw.startsWith('0x') || raw.startsWith('0o') || raw.startsWith('0b') ? raw : raw,
+        ),
+        raw: t.raw,
+        start: t.start,
+        end: t.end,
+      }
     }
     if (t.kind === 'string') {
       this.advance()
-      return { type: 'literal', value: parseStringValue(t.raw), raw: t.raw, start: t.start, end: t.end }
+      return {
+        type: 'literal',
+        value: parseStringValue(t.raw),
+        raw: t.raw,
+        start: t.start,
+        end: t.end,
+      }
     }
     if (t.kind === 'boolean') {
       this.advance()
@@ -315,14 +463,21 @@ export class JSExpressionParser {
       }
       this.advance()
       const lastSlash = t.raw.lastIndexOf('/')
-      return { type: 'regex', pattern: t.raw.slice(1, lastSlash), flags: t.raw.slice(lastSlash + 1), raw: t.raw, start: t.start, end: t.end }
+      return {
+        type: 'regex',
+        pattern: t.raw.slice(1, lastSlash),
+        flags: t.raw.slice(lastSlash + 1),
+        raw: t.raw,
+        start: t.start,
+        end: t.end,
+      }
     }
     if (t.kind === 'template') {
       if (this.opts.allowTemplateLiterals === false) {
         throw new JSParseError(
           'Template literals are not enabled in this context (pass { allowTemplateLiterals: true })',
           t,
-          this.src
+          this.src,
         )
       }
       this.advance()
@@ -343,7 +498,11 @@ export class JSExpressionParser {
       }
       if (t.raw === 'await') {
         if (!this.opts.allowAwait)
-          throw new JSParseError("'await' is not enabled in this context (pass { allowAwait: true })", t, this.src)
+          throw new JSParseError(
+            "'await' is not enabled in this context (pass { allowAwait: true })",
+            t,
+            this.src,
+          )
         this.advance()
         const operand = this.parseExpr(PREC.UNARY)
         return { type: 'unary', operator: 'await', operand, start: t.start, end: this.lastEnd() }
@@ -386,12 +545,17 @@ export class JSExpressionParser {
           if (!this.peek()) throw new JSParseError('Unterminated array literal', t, this.src)
           if (this.peek()!.raw === ',') {
             this.advance()
-            elements.push(null)  // hole
+            elements.push(null) // hole
             continue
           }
           if (this.peek()!.raw === '...') {
             const spread = this.advance()!
-            elements.push({ type: 'spread', argument: this.parseExpr(PREC.COMMA + 1), start: spread.start, end: this.lastEnd() })
+            elements.push({
+              type: 'spread',
+              argument: this.parseExpr(PREC.COMMA + 1),
+              start: spread.start,
+              end: this.lastEnd(),
+            })
           } else {
             elements.push(this.parseExpr(PREC.COMMA + 1))
           }
@@ -412,7 +576,12 @@ export class JSExpressionParser {
           // Spread property
           if (this.peek()!.raw === '...') {
             const spread = this.advance()!
-            props.push({ type: 'spread', argument: this.parseExpr(PREC.COMMA + 1), start: spread.start, end: this.lastEnd() })
+            props.push({
+              type: 'spread',
+              argument: this.parseExpr(PREC.COMMA + 1),
+              start: spread.start,
+              end: this.lastEnd(),
+            })
             if (this.peek()?.raw === ',') this.advance()
             continue
           }
@@ -424,26 +593,72 @@ export class JSExpressionParser {
             this.expectOp(']')
             this.expectOp(':', 'Expected : after computed object key')
             const value = this.parseExpr(PREC.COMMA + 1)
-            props.push({ type: 'property', key, value, computed: true, shorthand: false, start: lb.start, end: this.lastEnd() })
+            props.push({
+              type: 'property',
+              key,
+              value,
+              computed: true,
+              shorthand: false,
+              start: lb.start,
+              end: this.lastEnd(),
+            })
           } else {
             // Regular or shorthand key
             const keyTok = this.advance()!
             if (!keyTok) throw new JSParseError('Expected property key', undefined, this.src)
-            const key: JSExprNode = (keyTok.kind === 'string')
-              ? { type: 'literal', value: parseStringValue(keyTok.raw), raw: keyTok.raw, start: keyTok.start, end: keyTok.end }
-              : (keyTok.kind === 'number' || keyTok.kind === 'bigint')
-                ? { type: 'literal', value: parseFloat(keyTok.raw.replace(/_/g, '')), raw: keyTok.raw, start: keyTok.start, end: keyTok.end }
-                : { type: 'identifier', name: keyTok.raw, start: keyTok.start, end: keyTok.end }
+            const key: JSExprNode =
+              keyTok.kind === 'string'
+                ? {
+                    type: 'literal',
+                    value: parseStringValue(keyTok.raw),
+                    raw: keyTok.raw,
+                    start: keyTok.start,
+                    end: keyTok.end,
+                  }
+                : keyTok.kind === 'number' || keyTok.kind === 'bigint'
+                  ? {
+                      type: 'literal',
+                      value: parseFloat(keyTok.raw.replace(/_/g, '')),
+                      raw: keyTok.raw,
+                      start: keyTok.start,
+                      end: keyTok.end,
+                    }
+                  : { type: 'identifier', name: keyTok.raw, start: keyTok.start, end: keyTok.end }
 
             if (this.peek()?.raw === ':') {
               this.advance()
               const value = this.parseExpr(PREC.COMMA + 1)
-              props.push({ type: 'property', key, value, computed: false, shorthand: false, start: keyTok.start, end: this.lastEnd() })
+              props.push({
+                type: 'property',
+                key,
+                value,
+                computed: false,
+                shorthand: false,
+                start: keyTok.start,
+                end: this.lastEnd(),
+              })
             } else {
               // shorthand {x} — only valid for identifiers
               if (keyTok.kind !== 'identifier')
-                throw new JSParseError(`Expected ':' after object key '${keyTok.raw}'`, keyTok, this.src)
-              props.push({ type: 'property', key, value: { type: 'identifier', name: keyTok.raw, start: keyTok.start, end: keyTok.end }, computed: false, shorthand: true, start: keyTok.start, end: keyTok.end })
+                throw new JSParseError(
+                  `Expected ':' after object key '${keyTok.raw}'`,
+                  keyTok,
+                  this.src,
+                )
+              props.push({
+                type: 'property',
+                key,
+                value: {
+                  type: 'identifier',
+                  name: keyTok.raw,
+                  start: keyTok.start,
+                  end: keyTok.end,
+                },
+                computed: false,
+                shorthand: true,
+                start: keyTok.start,
+                end: keyTok.end,
+              })
             }
           }
           if (this.peek()?.raw === ',') this.advance()
@@ -454,11 +669,7 @@ export class JSExpressionParser {
       }
     }
 
-    throw new JSParseError(
-      `Unexpected token '${t.raw}'`,
-      t,
-      this.src
-    )
+    throw new JSParseError(`Unexpected token '${t.raw}'`, t, this.src)
   }
 
   private parseArgList(): Array<JSExprNode | JSSpreadNode> {
@@ -467,7 +678,12 @@ export class JSExpressionParser {
       if (!this.peek()) throw new JSParseError('Unterminated argument list')
       if (this.peek()!.raw === '...') {
         const s = this.advance()!
-        args.push({ type: 'spread', argument: this.parseExpr(PREC.COMMA + 1), start: s.start, end: this.lastEnd() })
+        args.push({
+          type: 'spread',
+          argument: this.parseExpr(PREC.COMMA + 1),
+          start: s.start,
+          end: this.lastEnd(),
+        })
       } else {
         args.push(this.parseExpr(PREC.COMMA + 1))
       }
@@ -486,10 +702,15 @@ export class JSExpressionParser {
 
     const expressions: JSExprNode[] = data.exprTokens.map((exprToks, i) => {
       const p = new JSExpressionParser(exprToks, this.opts, this.src)
-      try { return p.parse() }
-      catch (e) {
+      try {
+        return p.parse()
+      } catch (e) {
         if (e instanceof JSParseError) throw e
-        throw new JSParseError(`Error in template expression #${i + 1}: ${(e as Error).message}`, tok, this.src)
+        throw new JSParseError(
+          `Error in template expression #${i + 1}: ${(e as Error).message}`,
+          tok,
+          this.src,
+        )
       }
     })
     return {
@@ -502,9 +723,15 @@ export class JSExpressionParser {
     }
   }
 
-  private peek(): JSToken | undefined { return this.tokens[this.pos] }
-  private advance(): JSToken | undefined { return this.tokens[this.pos++] }
-  private lastEnd(): number { return this.tokens[this.pos - 1]?.end ?? 0 }
+  private peek(): JSToken | undefined {
+    return this.tokens[this.pos]
+  }
+  private advance(): JSToken | undefined {
+    return this.tokens[this.pos++]
+  }
+  private lastEnd(): number {
+    return this.tokens[this.pos - 1]?.end ?? 0
+  }
 
   private assertValidLogicalMixing(
     operator: '&&' | '||' | '??',
@@ -512,9 +739,10 @@ export class JSExpressionParser {
     right: JSExprNode,
     token: JSToken,
   ): void {
-    const mixesNullishWithBoolean = operator === '??'
-      ? this.isUnparenthesizedShortCircuit(left) || this.isUnparenthesizedShortCircuit(right)
-      : this.isUnparenthesizedNullish(left) || this.isUnparenthesizedNullish(right)
+    const mixesNullishWithBoolean =
+      operator === '??'
+        ? this.isUnparenthesizedShortCircuit(left) || this.isUnparenthesizedShortCircuit(right)
+        : this.isUnparenthesizedNullish(left) || this.isUnparenthesizedNullish(right)
 
     if (mixesNullishWithBoolean) {
       throw new JSParseError(
@@ -530,15 +758,21 @@ export class JSExpressionParser {
   }
 
   private isUnparenthesizedShortCircuit(node: JSExprNode): boolean {
-    return !this.parenthesizedNodes.has(node)
-      && node.type === 'logical'
-      && (node.operator === '&&' || node.operator === '||')
+    return (
+      !this.parenthesizedNodes.has(node) &&
+      node.type === 'logical' &&
+      (node.operator === '&&' || node.operator === '||')
+    )
   }
 
   private expect(kind: JSTokenKind, msg?: string): JSToken {
     const t = this.advance()
     if (!t || t.kind !== kind)
-      throw new JSParseError(msg ?? `Expected ${kind}, got '${t?.raw ?? 'end of input'}'`, t, this.src)
+      throw new JSParseError(
+        msg ?? `Expected ${kind}, got '${t?.raw ?? 'end of input'}'`,
+        t,
+        this.src,
+      )
     return t
   }
 
@@ -548,8 +782,10 @@ export class JSExpressionParser {
       throw new JSParseError(
         msg ?? `Expected '${raw}', got '${t?.raw ?? 'end of input'}'`,
         t ?? this.tokens[this.pos - 1],
-        this.src
+        this.src,
       )
     return t
   }
 }
+
+// #endregion

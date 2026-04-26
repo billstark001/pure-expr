@@ -1,6 +1,8 @@
-import { performance } from 'node:perf_hooks';
+import { performance } from 'node:perf_hooks'
 
-import { compile, evaluate } from '../dist/index.js';
+import { compile, evaluate } from '../dist/index.js'
+
+// #region Benchmark cases
 
 const CASES = [
   {
@@ -12,7 +14,8 @@ const CASES = [
   },
   {
     name: 'member-access-heavy',
-    expression: 'user.profile.metrics.primary.current + user.profile.metrics.secondary.current + account.plan.name.length + account.flags.beta.value',
+    expression:
+      'user.profile.metrics.primary.current + user.profile.metrics.secondary.current + account.plan.name.length + account.flags.beta.value',
     context: {
       user: {
         profile: {
@@ -49,7 +52,8 @@ const CASES = [
   },
   {
     name: 'template-literal-heavy',
-    expression: '`user:${user.name}|count:${stats.count}|total:${format(total)}|first:${items[0]?.label ?? "none"}`',
+    expression:
+      '`user:${user.name}|count:${stats.count}|total:${format(total)}|first:${items[0]?.label ?? "none"}`',
     context: {
       user: { name: 'Ada' },
       stats: { count: 12 },
@@ -67,83 +71,93 @@ const CASES = [
     iterations: 300_000,
     expected: 42,
   },
-];
+]
 
-const DIRECT_LABEL = 'direct evaluate';
-const COMPILED_LABEL = 'compiled evaluate';
-const WARMUP_RATIO = 0.05;
-const SAMPLE_COUNT = 5;
+const DIRECT_LABEL = 'direct evaluate'
+const COMPILED_LABEL = 'compiled evaluate'
+const WARMUP_RATIO = 0.05
+const SAMPLE_COUNT = 5
+
+// #endregion
+
+// #region Benchmark helpers
 
 function measure(iterations, fn) {
-  let lastResult;
-  const elapsedSamples = [];
+  let lastResult
+  const elapsedSamples = []
 
   for (let sampleIndex = 0; sampleIndex < SAMPLE_COUNT; sampleIndex += 1) {
-    const startedAt = performance.now();
+    const startedAt = performance.now()
     for (let index = 0; index < iterations; index += 1) {
-      lastResult = fn();
+      lastResult = fn()
     }
-    elapsedSamples.push(performance.now() - startedAt);
+    elapsedSamples.push(performance.now() - startedAt)
   }
 
-  const sortedSamples = elapsedSamples.slice().sort((left, right) => left - right);
-  const elapsedMs = sortedSamples[Math.floor(sortedSamples.length / 2)];
+  const sortedSamples = elapsedSamples.slice().sort((left, right) => left - right)
+  const elapsedMs = sortedSamples[Math.floor(sortedSamples.length / 2)]
 
   return {
     elapsedMs,
     lastResult,
     opsPerSecond: iterations / (elapsedMs / 1000),
-  };
+  }
 }
 
 function warmup(fn, iterations) {
   for (let index = 0; index < iterations; index += 1) {
-    fn();
+    fn()
   }
 }
 
 function formatOps(opsPerSecond) {
   return opsPerSecond.toLocaleString('en-US', {
     maximumFractionDigits: 0,
-  });
+  })
 }
 
 function formatMilliseconds(value) {
   return value.toLocaleString('en-US', {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3,
-  });
+  })
 }
 
 function pad(value, width) {
-  return String(value).padEnd(width, ' ');
+  return String(value).padEnd(width, ' ')
 }
 
 function assertExpected(caseName, label, actual, expected) {
   if (!Object.is(actual, expected)) {
-    throw new Error(`${caseName}: ${label} produced ${String(actual)} instead of ${String(expected)}`);
+    throw new Error(
+      `${caseName}: ${label} produced ${String(actual)} instead of ${String(expected)}`,
+    )
   }
 }
 
-const rows = [];
+// #endregion
+
+// #region Benchmark execution
+
+const rows = []
 
 for (const benchmarkCase of CASES) {
-  const { name, expression, context, iterations, expected } = benchmarkCase;
-  const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO));
-  const compileIterations = Math.max(2_000, Math.floor(iterations / 60));
+  const { name, expression, context, iterations, expected } = benchmarkCase
+  const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO))
+  const compileIterations = Math.max(2_000, Math.floor(iterations / 60))
 
-  const compiled = compile(expression);
+  const compiled = compile(expression)
 
-  warmup(() => evaluate(expression, context), warmupIterations);
-  warmup(() => compiled.evaluate(context), warmupIterations);
-  warmup(() => compile(expression), Math.min(compileIterations, warmupIterations));
+  warmup(() => evaluate(expression, context), warmupIterations)
+  warmup(() => compiled.evaluate(context), warmupIterations)
+  warmup(() => compile(expression), Math.min(compileIterations, warmupIterations))
 
-  const direct = measure(iterations, () => evaluate(expression, context));
-  const compiledRun = measure(iterations, () => compiled.evaluate(context));
-  const compileOnly = measure(compileIterations, () => compile(expression));
+  const direct = measure(iterations, () => evaluate(expression, context))
+  const compiledRun = measure(iterations, () => compiled.evaluate(context))
+  const compileOnly = measure(compileIterations, () => compile(expression))
 
-  assertExpected(name, DIRECT_LABEL, direct.lastResult, expected);
-  assertExpected(name, COMPILED_LABEL, compiledRun.lastResult, expected);
+  assertExpected(name, DIRECT_LABEL, direct.lastResult, expected)
+  assertExpected(name, COMPILED_LABEL, compiledRun.lastResult, expected)
 
   rows.push({
     name,
@@ -152,13 +166,13 @@ for (const benchmarkCase of CASES) {
     compiledOps: compiledRun.opsPerSecond,
     speedup: compiledRun.opsPerSecond / direct.opsPerSecond,
     compileMs: compileOnly.elapsedMs / compileIterations,
-  });
+  })
 }
 
-console.log('expr mode benchmark');
-console.log(`node ${process.version}`);
-console.log(`median of ${SAMPLE_COUNT} samples per measurement`);
-console.log('');
+console.log('expr mode benchmark')
+console.log(`node ${process.version}`)
+console.log(`median of ${SAMPLE_COUNT} samples per measurement`)
+console.log('')
 
 const headers = [
   pad('case', 24),
@@ -167,18 +181,22 @@ const headers = [
   pad('compiled ops/s', 18),
   pad('speedup', 10),
   pad('avg compile ms', 16),
-];
+]
 
-console.log(headers.join(''));
-console.log('-'.repeat(headers.join('').length));
+console.log(headers.join(''))
+console.log('-'.repeat(headers.join('').length))
 
 for (const row of rows) {
-  console.log([
-    pad(row.name, 24),
-    pad(row.iterations.toLocaleString('en-US'), 12),
-    pad(formatOps(row.directOps), 16),
-    pad(formatOps(row.compiledOps), 18),
-    pad(`${row.speedup.toFixed(2)}x`, 10),
-    pad(formatMilliseconds(row.compileMs), 16),
-  ].join(''));
+  console.log(
+    [
+      pad(row.name, 24),
+      pad(row.iterations.toLocaleString('en-US'), 12),
+      pad(formatOps(row.directOps), 16),
+      pad(formatOps(row.compiledOps), 18),
+      pad(`${row.speedup.toFixed(2)}x`, 10),
+      pad(formatMilliseconds(row.compileMs), 16),
+    ].join(''),
+  )
 }
+
+// #endregion

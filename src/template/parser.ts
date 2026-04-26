@@ -1,44 +1,50 @@
+// #region Template parser types
+
 /** Error captured while parsing or rendering a template. */
 export interface TemplateRenderError {
-  kind: 'template' | 'lex' | 'parse' | 'eval';
-  message: string;
-  expression: string;
-  start: number;
-  end: number;
+  kind: 'template' | 'lex' | 'parse' | 'eval'
+  message: string
+  expression: string
+  start: number
+  end: number
 }
 
 /** Expression placeholder segment inside a template string. */
 export interface TemplateExpressionSegment {
-  type: 'expression';
-  expr: string;
-  start: number;
-  end: number;
-  delimiterLength: number;
+  type: 'expression'
+  expr: string
+  start: number
+  end: number
+  delimiterLength: number
 }
 
 /** Plain-text segment inside a template string. */
 export interface TemplateTextSegment {
-  type: 'text';
-  value: string;
+  type: 'text'
+  value: string
 }
 
 /** One parsed template segment. */
-export type TemplateSegment = TemplateTextSegment | TemplateExpressionSegment;
+export type TemplateSegment = TemplateTextSegment | TemplateExpressionSegment
 
 /** Parsed template representation. */
 export interface TemplateParseResult {
-  segments: TemplateSegment[];
-  errors: TemplateRenderError[];
+  segments: TemplateSegment[]
+  errors: TemplateRenderError[]
 }
 
 /** Parser-level budget controls for text templates. */
 export interface TemplateParseOptions {
-  maxSourceLength?: number;
-  maxPlaceholders?: number;
+  maxSourceLength?: number
+  maxPlaceholders?: number
 }
 
+// #endregion
+
+// #region Template parser helpers
+
 function isQuote(ch: string): boolean {
-  return ch === '"' || ch === '\'' || ch === '`';
+  return ch === '"' || ch === "'" || ch === '`'
 }
 
 function makeTemplateError(message: string, start: number, end: number): TemplateRenderError {
@@ -48,129 +54,146 @@ function makeTemplateError(message: string, start: number, end: number): Templat
     start,
     end,
     kind: 'template',
-  };
+  }
 }
 
 function budgetExceeded(message: string, start: number, end: number): TemplateParseResult {
   return {
     segments: [],
     errors: [makeTemplateError(message, start, end)],
-  };
+  }
 }
 
 function readBraceRun(source: string, from: number, brace: '{' | '}'): number {
-  let i = from;
-  while (i < source.length && source[i] === brace) i += 1;
-  return i - from;
+  let i = from
+  while (i < source.length && source[i] === brace) i += 1
+  return i - from
 }
 
 function findExpressionClose(source: string, from: number, delimiterLength: number): number {
-  let i = from;
-  let braceDepth = 0;
-  let quote: string | null = null;
+  let i = from
+  let braceDepth = 0
+  let quote: string | null = null
 
   while (i < source.length) {
-    const ch = source[i];
+    const ch = source[i]
 
     if (quote) {
       if (ch === '\\') {
-        i += 2;
-        continue;
+        i += 2
+        continue
       }
-      if (ch === quote) quote = null;
-      i += 1;
-      continue;
+      if (ch === quote) quote = null
+      i += 1
+      continue
     }
 
     if (isQuote(ch)) {
-      quote = ch;
-      i += 1;
-      continue;
+      quote = ch
+      i += 1
+      continue
     }
 
     if (ch === '{') {
-      braceDepth += 1;
-      i += 1;
-      continue;
+      braceDepth += 1
+      i += 1
+      continue
     }
 
     if (ch === '}') {
       if (braceDepth > 0) {
-        braceDepth -= 1;
-        i += 1;
-        continue;
+        braceDepth -= 1
+        i += 1
+        continue
       }
-      const run = readBraceRun(source, i, '}');
+      const run = readBraceRun(source, i, '}')
       if (run >= delimiterLength) {
-        return i;
+        return i
       }
-      i += 1;
-      continue;
+      i += 1
+      continue
     }
 
-    i += 1;
+    i += 1
   }
 
-  return -1;
+  return -1
 }
 
+// #endregion
+
+// #region Public template parser
+
 /** Parse a text template with {{ expr }} style placeholders. */
-export function parseTemplate(source: string, options: TemplateParseOptions = {}): TemplateParseResult {
+export function parseTemplate(
+  source: string,
+  options: TemplateParseOptions = {},
+): TemplateParseResult {
   if (options.maxSourceLength !== undefined && source.length > options.maxSourceLength) {
-    return budgetExceeded(`Template exceeds maximum source length (${options.maxSourceLength})`, 0, source.length);
+    return budgetExceeded(
+      `Template exceeds maximum source length (${options.maxSourceLength})`,
+      0,
+      source.length,
+    )
   }
 
-  const segments: TemplateSegment[] = [];
-  const errors: TemplateRenderError[] = [];
-  let i = 0;
-  let textStart = 0;
-  let placeholderCount = 0;
+  const segments: TemplateSegment[] = []
+  const errors: TemplateRenderError[] = []
+  let i = 0
+  let textStart = 0
+  let placeholderCount = 0
 
   while (i < source.length) {
     if (source[i] !== '{') {
-      i += 1;
-      continue;
+      i += 1
+      continue
     }
 
-    const openLen = readBraceRun(source, i, '{');
+    const openLen = readBraceRun(source, i, '{')
     if (openLen < 2) {
-      i += 1;
-      continue;
+      i += 1
+      continue
     }
 
     if (options.maxPlaceholders !== undefined && placeholderCount >= options.maxPlaceholders) {
-      return budgetExceeded(`Template exceeds maximum placeholder count (${options.maxPlaceholders})`, i, source.length);
+      return budgetExceeded(
+        `Template exceeds maximum placeholder count (${options.maxPlaceholders})`,
+        i,
+        source.length,
+      )
     }
 
     if (i > textStart) {
-      segments.push({ type: 'text', value: source.slice(textStart, i) });
+      segments.push({ type: 'text', value: source.slice(textStart, i) })
     }
 
-    const exprStart = i + openLen;
-    const closePos = findExpressionClose(source, exprStart, openLen);
+    const exprStart = i + openLen
+    const closePos = findExpressionClose(source, exprStart, openLen)
     if (closePos < 0) {
-      errors.push(makeTemplateError('Unclosed template expression', i, source.length));
-      segments.push({ type: 'text', value: source.slice(i) });
-      return { segments, errors };
+      errors.push(makeTemplateError('Unclosed template expression', i, source.length))
+      segments.push({ type: 'text', value: source.slice(i) })
+      return { segments, errors }
     }
 
-    const expr = source.slice(exprStart, closePos).trim();
+    const expr = source.slice(exprStart, closePos).trim()
     segments.push({
       type: 'expression',
       expr,
       start: i,
       end: closePos + openLen,
       delimiterLength: openLen,
-    });
-    placeholderCount += 1;
+    })
+    placeholderCount += 1
 
-    i = closePos + openLen;
-    textStart = i;
+    i = closePos + openLen
+    textStart = i
   }
 
   if (textStart < source.length) {
-    segments.push({ type: 'text', value: source.slice(textStart) });
+    segments.push({ type: 'text', value: source.slice(textStart) })
   }
 
-  return { segments, errors };
+  return { segments, errors }
 }
+
+// #endregion

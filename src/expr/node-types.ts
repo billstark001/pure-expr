@@ -1,3 +1,5 @@
+// #region Core AST node types
+
 /** Literal primitive value node. */
 export interface JSLiteralNode {
   type: 'literal'
@@ -69,8 +71,8 @@ export interface JSMemberNode {
   type: 'member'
   object: JSExprNode
   property: JSExprNode
-  computed: boolean   // obj[x] vs obj.x
-  optional: boolean   // ?.
+  computed: boolean // obj[x] vs obj.x
+  optional: boolean // ?.
   start?: number
   end?: number
 }
@@ -80,7 +82,7 @@ export interface JSCallNode {
   type: 'call'
   callee: JSExprNode
   args: Array<JSExprNode | JSSpreadNode>
-  optional: boolean   // ?.()
+  optional: boolean // ?.()
   start?: number
   end?: number
 }
@@ -147,6 +149,10 @@ export interface JSPipelineNode {
   end?: number
 }
 
+// #endregion
+
+// #region AST union
+
 /** Any AST node produced by the expression parser. */
 export type JSExprNode =
   | JSLiteralNode
@@ -164,3 +170,5 @@ export type JSExprNode =
   | JSTemplateNode
   | JSSequenceNode
   | JSPipelineNode
+
+// #endregion

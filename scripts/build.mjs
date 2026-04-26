@@ -1,20 +1,42 @@
-import { rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises'
 
-import { build } from 'esbuild';
+import { build } from 'esbuild'
 
-await rm('dist', { recursive: true, force: true });
+// #region Shared build configuration
 
-await build({
-  entryPoints: ['src/index.ts', 'src/expr/index.ts', 'src/template/index.ts'],
-  outdir: 'dist',
+const entryPoints = ['src/index.ts', 'src/expr/index.ts', 'src/template/index.ts']
+const sharedOptions = {
+  entryPoints,
   outbase: 'src',
-  format: 'esm',
-  target: 'es2022',
+  target: 'es2015',
   platform: 'neutral',
   sourcemap: true,
   bundle: true,
-  splitting: true,
-  chunkNames: 'chunks/[name]-[hash]',
   packages: 'external',
   logLevel: 'info',
-});
+}
+
+// #endregion
+
+// #region Emit ESM and CJS bundles
+
+await rm('dist', { recursive: true, force: true })
+
+await Promise.all([
+  build({
+    ...sharedOptions,
+    outdir: 'dist/esm',
+    format: 'esm',
+    splitting: true,
+    chunkNames: 'chunks/[name]-[hash]',
+  }),
+  build({
+    ...sharedOptions,
+    outdir: 'dist/cjs',
+    format: 'cjs',
+    splitting: false,
+    outExtension: { '.js': '.cjs' },
+  }),
+])
+
+// #endregion
