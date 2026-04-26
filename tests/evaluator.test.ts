@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { evaluate, EvalOptions, JSParseError, JSEvalError, JSLexError } from "../src/expr/index.js"
+import { compileExpression, evaluate, EvalOptions, JSParseError, JSEvalError, JSLexError } from "../src/expr/index.js"
 
 function ev(expr: string, ctx: Record<string, unknown> = {}, opts: EvalOptions = {}): unknown {
   return evaluate(expr, ctx, opts)
@@ -77,6 +77,67 @@ describe("evaluator", () => {
     const tag = (strings: TemplateStringsArray, ...vals: unknown[]) =>
       strings.raw.join('') + '|' + vals.join(',')
     expect(ev('tag`a${1}b${2}c`', { tag })).toBe('abc|1,2')
+  });
+  test('template literal can be disabled', () => {
+    expect(() => ev('`hello`', {}, { allowTemplateLiterals: false })).toThrow('not enabled')
+  });
+  test('tagged template literal can be disabled independently', () => {
+    expect(() => ev('tag`hello`', { tag: (strings: TemplateStringsArray) => strings[0] }, {
+      allowTaggedTemplates: false,
+    })).toThrow('not enabled')
+  });
+  test('tagged template literal passes a cached spec-like template object by default', () => {
+    const seen: TemplateStringsArray[] = []
+    const compiled = compileExpression('tag`a\\nb${value}c`')
+    const tag = (strings: TemplateStringsArray) => {
+      seen.push(strings)
+      return {
+        cooked: strings[0],
+        raw: strings.raw[0],
+        frozen: Object.isFrozen(strings),
+        rawFrozen: Object.isFrozen(strings.raw),
+        rawEnumerable: Object.prototype.propertyIsEnumerable.call(strings, 'raw'),
+      }
+    }
+
+    const first = compiled.evaluate({ tag, value: 1 })
+    const second = compiled.evaluate({ tag, value: 2 })
+
+    expect(first).toEqual({
+      cooked: 'a\nb',
+      raw: 'a\\nb',
+      frozen: true,
+      rawFrozen: true,
+      rawEnumerable: false,
+    })
+    expect(seen[0]).toBe(seen[1])
+    expect(second).toEqual(first)
+  });
+  test('tagged template literal supports loose array emulation mode', () => {
+    const tag = (strings: TemplateStringsArray) => ({
+      frozen: Object.isFrozen(strings),
+      rawFrozen: Object.isFrozen(strings.raw),
+      rawEnumerable: Object.prototype.propertyIsEnumerable.call(strings, 'raw'),
+    })
+
+    expect(ev('tag`x`', { tag }, { taggedTemplateArrayMode: 'loose' })).toEqual({
+      frozen: false,
+      rawFrozen: false,
+      rawEnumerable: true,
+    })
+  });
+  test('untagged template literal rejects invalid escapes', () => {
+    expect(() => ev('`bad \\u{110000}`')).toThrow('Invalid escape sequence')
+  });
+  test('tagged template literal preserves raw text and undefined cooked values for invalid escapes', () => {
+    const tag = (strings: TemplateStringsArray) => [strings[0], strings.raw[0]]
+    expect(ev('tag`bad \\u{110000}`', { tag })).toEqual([undefined, 'bad \\u{110000}'])
+  });
+  test('template placeholder expressions handle regex literals, comments, and nested braces', () => {
+    expect(ev('`${ /* keep */ /a{2}/.test(text) ? `{${value}}` : "no" }`', {
+      text: 'aa',
+      value: 'x',
+    })).toBe('{x}')
   });
 
   // ── Member access ─────────────────────────────────────────────────

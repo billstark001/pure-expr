@@ -26,11 +26,58 @@ const BLOCKED_GLOBALS = new Set([
   'Proxy', 'Reflect',
 ])
 
+export type TaggedTemplateArrayMode = 'spec' | 'loose'
+
+type EmulatedTemplateStringsArray = TemplateStringsArray & {
+  raw: readonly string[]
+}
+
+const SPEC_TEMPLATE_OBJECT_CACHE = new WeakMap<JSTemplateNode, EmulatedTemplateStringsArray>()
+const LOOSE_TEMPLATE_OBJECT_CACHE = new WeakMap<JSTemplateNode, EmulatedTemplateStringsArray>()
+
+function createTaggedTemplateObject(
+  node: JSTemplateNode,
+  mode: TaggedTemplateArrayMode
+): EmulatedTemplateStringsArray {
+  const cooked = node.quasis.map((quasi) => quasi.cooked === null ? undefined : quasi.cooked)
+  const raw = node.quasis.map((quasi) => quasi.raw)
+
+  if (mode === 'loose') {
+    return Object.assign(cooked, { raw }) as unknown as EmulatedTemplateStringsArray
+  }
+
+  const templateObject = cooked.slice() as Array<string | undefined>
+  const rawObject = Object.freeze(raw.slice())
+
+  Object.defineProperty(templateObject, 'raw', {
+    value: rawObject,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+
+  return Object.freeze(templateObject) as unknown as EmulatedTemplateStringsArray
+}
+
+function getTaggedTemplateObject(
+  node: JSTemplateNode,
+  mode: TaggedTemplateArrayMode
+): EmulatedTemplateStringsArray {
+  const cache = mode === 'loose' ? LOOSE_TEMPLATE_OBJECT_CACHE : SPEC_TEMPLATE_OBJECT_CACHE
+  const cached = cache.get(node)
+  if (cached) return cached
+
+  const created = createTaggedTemplateObject(node, mode)
+  cache.set(node, created)
+  return created
+}
+
 /** Runtime evaluation options for JSEvaluator. */
 export interface JSEvalOptions {
   allowAwait?: boolean
   allowIn?: boolean
   maxCallDepth?: number
+  taggedTemplateArrayMode?: TaggedTemplateArrayMode
 }
 
 /** Evaluates expression AST nodes against a readonly scope object. */
@@ -269,11 +316,13 @@ export class JSEvaluator {
       const tag = this.eval(node.tag)
       if (typeof tag !== 'function')
         throw new JSEvalError('Template tag must be a function', node)
-      const cookedArr = Object.assign(
-        node.quasis.map(q => q.cooked),
-        { raw: node.quasis.map(q => q.raw) }
+
+      const templateObject = getTaggedTemplateObject(
+        node,
+        this.opts.taggedTemplateArrayMode ?? 'spec'
       )
-      return this.safeCall(tag, undefined, [cookedArr, ...parts], node)
+
+      return this.safeCall(tag, undefined, [templateObject, ...parts], node)
     }
 
     // Untagged: interleave quasis and expressions

@@ -56,6 +56,20 @@ function stickyAt<T extends RegExp>(re: T, src: string, pos: number): RegExpExec
   return re.exec(src)
 }
 
+function isHexDigit(value: string | undefined): value is string {
+  return value !== undefined && /[0-9a-fA-F]/.test(value)
+}
+
+function isLineTerminator(value: string | undefined): boolean {
+  return value === '\n' || value === '\r' || value === '\u2028' || value === '\u2029'
+}
+
+function consumeLineContinuation(raw: string, index: number): number | null {
+  const ch = raw[index]
+  if (ch === '\r' && raw[index + 1] === '\n') return index + 1
+  return isLineTerminator(ch) ? index : null
+}
+
 /** Converts expression source text into a token stream. */
 export class JSLexer {
   private pos = 0
@@ -69,28 +83,21 @@ export class JSLexer {
       const ws = stickyAt(RX_TRIVIA, this.src, this.pos)
       if (ws) { this.pos += ws[0].length; continue }
 
-      const ch = this.src[this.pos]
-
-      if (ch === '`') { tokens.push(this.lexTemplate()); continue }
-      if ((ch === '/' || ch === '/') && this.isRegexCtx(tokens)) {
-        tokens.push(this.lexRegex()); continue
-      }
-
-      let tok: JSToken | null = null
-      if (/\d/.test(ch) || (ch === '.' && /\d/.test(this.src[this.pos + 1] ?? ''))) {
-        tok = this.lexNumber()
-      } else if (ch === '"' || ch === "'") {
-        tok = this.lexString()
-      } else if (/[a-zA-Z_$]/.test(ch)) {
-        tok = this.lexIdent()
-      } else {
-        tok = this.lexOp()
-      }
-
-      if (!tok) throw new JSLexError(`Unexpected character '${ch}'`, this.pos, this.src)
-      tokens.push(tok)
+      tokens.push(this.lexToken(tokens))
     }
     return tokens
+  }
+
+  private lexToken(prev: JSToken[]): JSToken {
+    const ch = this.src[this.pos]
+
+    if (ch === '`') return this.lexTemplate()
+    if (ch === '/' && this.isRegexCtx(prev)) return this.lexRegex()
+    if (/\d/.test(ch) || (ch === '.' && /\d/.test(this.src[this.pos + 1] ?? '')))
+      return this.lexNumber()
+    if (ch === '"' || ch === "'") return this.lexString()
+    if (/[a-zA-Z_$]/.test(ch)) return this.lexIdent()
+    return this.lexOp()
   }
 
   private isRegexCtx(prev: JSToken[]): boolean {
@@ -208,15 +215,9 @@ export class JSLexer {
       if (this.pos >= this.src.length) break
       const c = this.src[this.pos]
       if (c === '}' && depth === 0) { this.pos++; return tokens }
-      // Read the next token normally (template literals nest recursively)
-      const ch2 = c
-      let tok: JSToken
-      if (ch2 === '`') tok = this.lexTemplate()
-      else if (/\d/.test(ch2) || (ch2 === '.' && /\d/.test(this.src[this.pos + 1] ?? '')))
-        tok = this.lexNumber()
-      else if (ch2 === '"' || ch2 === "'") tok = this.lexString()
-      else if (/[a-zA-Z_$]/.test(ch2)) tok = this.lexIdent()
-      else tok = this.lexOp()
+
+      // Read the next token normally (template literals and regex literals nest recursively)
+      const tok = this.lexToken(tokens)
       if (tok.kind === 'op') {
         if (tok.raw === '{') depth++
         else if (tok.raw === '}') depth--
@@ -237,16 +238,104 @@ export class JSLexer {
 
 /** Convert a raw template fragment into its cooked string representation. */
 export function cookTemplate(raw: string): string | null {
-  try {
-    return raw
-      .replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
-      .replace(/\\`/g, '`').replace(/\\\\/g, '\\').replace(/\\\$/g, '$')
-      .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-      .replace(/\\u([\da-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-      .replace(/\\x([\da-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-      .replace(/\\0(?!\d)/g, '\0')
-      .replace(/\\(.)/g, (_, c) => c)
-  } catch {
-    return null
+  let cooked = ''
+
+  for (let index = 0; index < raw.length; index++) {
+    const ch = raw[index]
+    if (ch !== '\\') {
+      cooked += ch
+      continue
+    }
+
+    const next = raw[index + 1]
+    if (next === undefined) return null
+
+    const lineContinuationEnd = consumeLineContinuation(raw, index + 1)
+    if (lineContinuationEnd !== null) {
+      index = lineContinuationEnd
+      continue
+    }
+
+    if (next === '0') {
+      if (/\d/.test(raw[index + 2] ?? '')) return null
+      cooked += '\0'
+      index += 1
+      continue
+    }
+
+    if (next === 'b') {
+      cooked += '\b'
+      index += 1
+      continue
+    }
+    if (next === 'f') {
+      cooked += '\f'
+      index += 1
+      continue
+    }
+    if (next === 'n') {
+      cooked += '\n'
+      index += 1
+      continue
+    }
+    if (next === 'r') {
+      cooked += '\r'
+      index += 1
+      continue
+    }
+    if (next === 't') {
+      cooked += '\t'
+      index += 1
+      continue
+    }
+    if (next === 'v') {
+      cooked += '\v'
+      index += 1
+      continue
+    }
+    if (next === '`' || next === '$' || next === '\\') {
+      cooked += next
+      index += 1
+      continue
+    }
+
+    if (next === 'x') {
+      const hex = raw.slice(index + 2, index + 4)
+      if (hex.length !== 2 || ![...hex].every(isHexDigit)) return null
+      cooked += String.fromCharCode(Number.parseInt(hex, 16))
+      index += 3
+      continue
+    }
+
+    if (next === 'u') {
+      if (raw[index + 2] === '{') {
+        let end = index + 3
+        while (end < raw.length && raw[end] !== '}') {
+          if (!isHexDigit(raw[end])) return null
+          end++
+        }
+
+        if (end === index + 3 || raw[end] !== '}') return null
+
+        const codePoint = Number.parseInt(raw.slice(index + 3, end), 16)
+        if (codePoint > 0x10FFFF) return null
+        cooked += String.fromCodePoint(codePoint)
+        index = end
+        continue
+      }
+
+      const hex = raw.slice(index + 2, index + 6)
+      if (hex.length !== 4 || ![...hex].every(isHexDigit)) return null
+      cooked += String.fromCharCode(Number.parseInt(hex, 16))
+      index += 5
+      continue
+    }
+
+    if (/\d/.test(next)) return null
+
+    cooked += next
+    index += 1
   }
+
+  return cooked
 }

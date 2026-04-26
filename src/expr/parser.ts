@@ -37,6 +37,8 @@ export class JSParseError extends Error {
 export interface JSParserOptions {
   allowAwait?: boolean
   allowIn?: boolean
+  allowTemplateLiterals?: boolean
+  allowTaggedTemplates?: boolean
 }
 
 // Operator precedence table (higher = tighter binding)
@@ -164,6 +166,13 @@ export class JSExpressionParser {
 
       // Tagged template literal
       if (t.kind === 'template' && PREC.POSTFIX >= minPrec) {
+        if (this.opts.allowTaggedTemplates === false) {
+          throw new JSParseError(
+            'Tagged template literals are not enabled in this context (pass { allowTaggedTemplates: true })',
+            t,
+            this.src
+          )
+        }
         this.advance()
         const tnode = this.buildTemplateNode(t, left)
         left = tnode
@@ -270,6 +279,13 @@ export class JSExpressionParser {
       return { type: 'regex', pattern: t.raw.slice(1, lastSlash), flags: t.raw.slice(lastSlash + 1), raw: t.raw, start: t.start, end: t.end }
     }
     if (t.kind === 'template') {
+      if (this.opts.allowTemplateLiterals === false) {
+        throw new JSParseError(
+          'Template literals are not enabled in this context (pass { allowTemplateLiterals: true })',
+          t,
+          this.src
+        )
+      }
       this.advance()
       return this.buildTemplateNode(t, null)
     }
@@ -425,6 +441,10 @@ export class JSExpressionParser {
 
   private buildTemplateNode(tok: JSToken, tag: JSExprNode | null): JSTemplateNode {
     const data = tok.tmpl!
+    if (!tag && data.quasis.some((quasi) => quasi.cooked === null)) {
+      throw new JSParseError('Invalid escape sequence in template literal', tok, this.src)
+    }
+
     const expressions: JSExprNode[] = data.exprTokens.map((exprToks, i) => {
       const p = new JSExpressionParser(exprToks, this.opts, this.src)
       try { return p.parse() }

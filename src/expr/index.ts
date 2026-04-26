@@ -7,7 +7,12 @@ import { JSParserOptions, JSExpressionParser } from "./parser.js"
 export interface EvalOptions extends JSParserOptions, JSEvalOptions {}
 
 export { JSExpressionParser, type JSParserOptions, JSParseError } from "./parser.js"
-export { JSEvaluator, type JSEvalOptions, JSEvalError } from "./evaluator.js"
+export {
+  JSEvaluator,
+  type JSEvalOptions,
+  type TaggedTemplateArrayMode,
+  JSEvalError,
+} from "./evaluator.js"
 export {
   JSLexer,
   type JSToken,

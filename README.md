@@ -61,6 +61,14 @@ Useful expression APIs:
 - tokenizeExpression(source): inspect lexer output
 - parseExpression(source, options): inspect the AST directly
 
+Useful expression options:
+
+- allowAwait: enable parsing of await expressions in sync mode
+- allowIn: enable the in operator
+- allowTemplateLiterals: enable or disable untagged template literals
+- allowTaggedTemplates: enable or disable tagged template literals independently
+- taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
+
 For custom pipelines you can also use JSLexer, JSExpressionParser, JSEvaluator, the exported AST node types, and PrattParser.
 
 ## Template Features
@@ -81,6 +89,7 @@ const rendered = renderTemplate('Hi {{ user.name }}', {
 - The package is ESM-only. CommonJS require() is not supported.
 - Expressions are intentionally read-only. Statements and assignment operators are rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
+- Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
 - Dangerous globals and prototype-chain escape hatches are blocked, but user-provided functions still run as provided.
 
 ## Development
