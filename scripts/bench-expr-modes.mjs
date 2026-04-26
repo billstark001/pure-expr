@@ -153,7 +153,10 @@ for (const benchmarkCase of CASES) {
 
   warmup(() => evaluate(expression, context, BENCH_EVAL_OPTIONS), warmupIterations)
   warmup(() => compiled.evaluate(context), warmupIterations)
-  warmup(() => compile(expression, BENCH_EVAL_OPTIONS), Math.min(compileIterations, warmupIterations))
+  warmup(
+    () => compile(expression, BENCH_EVAL_OPTIONS),
+    Math.min(compileIterations, warmupIterations),
+  )
 
   const direct = measure(iterations, () => evaluate(expression, context, BENCH_EVAL_OPTIONS))
   const compiledRun = measure(iterations, () => compiled.evaluate(context))

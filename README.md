@@ -1,6 +1,6 @@
-# simple-expr
+# pure-expr
 
-simple-expr is an ESM-first TypeScript library for two related jobs:
+pure-expr is an ESM-first TypeScript library for two related jobs:
 
 - parsing and evaluating small JavaScript-like expressions against a readonly scope
 - parsing and rendering text templates with {{ expression }} placeholders
@@ -10,10 +10,10 @@ It also exports the lower-level lexer, parser, evaluator and AST types.
 ## Install
 
 ```sh
-pnpm add simple-expr
+pnpm add pure-expr
 ```
 
-This package is ESM-only and targets modern runtimes.
+This package ships both ESM and CommonJS entrypoints and targets modern runtimes.
 
 ## Quick Start
 
@@ -23,7 +23,7 @@ import {
  compileTemplate,
  evaluate,
  renderTemplate,
-} from 'simple-expr';
+} from 'pure-expr';
 
 const total = evaluate('price * quantity', { price: 12, quantity: 3 });
 // 36
@@ -45,9 +45,9 @@ compiledTemplate.render({ user: { name: 'Linus' } });
 ## Entry Points
 
 ```ts
-import { evaluate, compile } from 'simple-expr';
-import { parseExpression, tokenizeExpression } from 'simple-expr/expr';
-import { parseTemplate, renderTemplate, compileTemplate } from 'simple-expr/template';
+import { evaluate, compile } from 'pure-expr';
+import { parseExpression, tokenizeExpression } from 'pure-expr/expr';
+import { parseTemplate, renderTemplate, compileTemplate } from 'pure-expr/template';
 ```
 
 ## Expression Features
@@ -95,7 +95,7 @@ Useful expression options:
 Compatibility example:
 
 ```ts
-import { allowAllCalls, evaluate } from 'simple-expr';
+import { allowAllCalls, evaluate } from 'pure-expr';
 
 evaluate('format(name)', {
  name: 'Ada',
@@ -116,7 +116,7 @@ Template placeholder closing behaves like a repeated-brace delimiter match, simi
 Template parsing also accepts maxSourceLength and maxPlaceholders so oversized templates can be rejected before expression evaluation starts.
 
 ```ts
-import { compileTemplate, parseTemplate, renderTemplate } from 'simple-expr/template';
+import { compileTemplate, parseTemplate, renderTemplate } from 'pure-expr/template';
 
 const parsed = parseTemplate('Hi {{ user.name }}');
 const rendered = renderTemplate('Hi {{ user.name }}', {
@@ -145,6 +145,15 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 - Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
 - Template placeholders do not parse embedded JavaScript while searching for their closing delimiter. If the embedded source contains the same closing brace run as the surrounding delimiter, increase the delimiter length on both sides.
 - Dangerous globals and prototype-chain escape hatches are blocked, but user-provided functions still run as provided.
+
+## Publishing
+
+Before publishing a new version, bump the version in package.json and merge that change to main. The publish workflow validates the package with the same pnpm run ci pipeline used by CI and refuses to publish a version that already exists on npm.
+
+- Automatic publish: create a GitHub release for the version tag after the version bump lands on main.
+- Manual publish: run the Publish to npm workflow from GitHub Actions and choose the ref, npm dist-tag, and whether to run a dry run.
+- Authentication: configure npm trusted publishing for GitHub Actions or add an NPM_TOKEN repository secret.
+- Local preflight: run pnpm run ci and pnpm pack --dry-run before cutting a release.
 
 ## Development
 

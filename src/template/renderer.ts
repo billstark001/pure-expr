@@ -36,7 +36,7 @@ export interface TemplateRenderResult {
 }
 
 /** Compilation controls for reusable template rendering. */
-export interface CompileTemplateOptions extends RenderTemplateOptions { }
+export interface CompileTemplateOptions extends RenderTemplateOptions {}
 
 /** Render-time overrides for a compiled template. */
 export interface CompiledTemplateRenderOptions {

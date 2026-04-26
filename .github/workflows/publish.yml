@@ -2,8 +2,37 @@ name: Publish to npm
 
 on:
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to publish
+        required: false
+        default: main
+        type: string
+      npm_tag:
+        description: npm dist-tag to publish with
+        required: false
+        default: latest
+        type: string
+      dry_run:
+        description: Run npm publish in dry-run mode
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+env:
+  PNPM_VERSION: 10.33.2
+  NODE_VERSION: 22
+  PUBLISH_REF: ${{ github.event_name == 'release' && github.event.release.tag_name
+    || inputs.ref }}
+  NPM_DIST_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag || 'latest' }}
+  IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+  HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
 
 jobs:
   publish:
@@ -15,26 +44,66 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PUBLISH_REF }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+
+      - name: Print publish target
+        shell: bash
+        run: |
+          echo "ref=$PUBLISH_REF"
+          echo "dist-tag=$NPM_DIST_TAG"
+          echo "dry-run=$IS_DRY_RUN"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Configure npm authentication
+        if: env.HAS_NPM_TOKEN == 'true'
+        shell: bash
+        run: |
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Validate package
         run: pnpm run ci
 
+      - name: Read package metadata
+        id: package
+        shell: bash
+        run: |
+          echo "name=$(node -p \"require('./package.json').name\")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure version is not already published
+        if: env.IS_DRY_RUN != 'true'
+        shell: bash
+        run: |
+          package_name='${{ steps.package.outputs.name }}'
+          package_version='${{ steps.package.outputs.version }}'
+          if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+            echo "npm already has $package_name@$package_version"
+            exit 1
+          fi
+
       - name: Publish package
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          publish_args=(publish --access public --tag "$NPM_DIST_TAG")
+          if [[ "$IS_DRY_RUN" == "true" ]]; then
+            publish_args+=(--dry-run)
+          else
+            publish_args+=(--provenance)
+          fi
+          npm "${publish_args[@]}"

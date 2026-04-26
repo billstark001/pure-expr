@@ -356,7 +356,7 @@ describe('evaluator', () => {
     class Scope {
       count = 2
     }
-    ; (Scope.prototype as unknown as Record<string, unknown>).hidden = 99
+    ;(Scope.prototype as unknown as Record<string, unknown>).hidden = 99
 
     expect(
       evaluate('count', new Scope() as unknown as Record<string, unknown>, {
@@ -380,13 +380,9 @@ describe('evaluator', () => {
     })
 
     expect(() =>
-      evaluate(
-        'nested.value',
-        { nested } as Record<string, unknown>,
-        {
-          rootContextMode: 'copy-plain-data-to-null-prototype',
-        },
-      ),
+      evaluate('nested.value', { nested } as Record<string, unknown>, {
+        rootContextMode: 'copy-plain-data-to-null-prototype',
+      }),
     ).toThrow('accessor properties')
     expect(getterHits).toBe(0)
   })

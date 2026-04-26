@@ -742,7 +742,8 @@ function evalArgs(args: Array<JSExprNode | JSSpreadNode>, state: EvalState): unk
 
   const result: unknown[] = []
   for (const arg of args) {
-    if (arg.type === 'spread') appendIterableValues(result, evalNode(arg.argument, state), arg, state)
+    if (arg.type === 'spread')
+      appendIterableValues(result, evalNode(arg.argument, state), arg, state)
     else result.push(evalNode(arg, state))
   }
   return result
