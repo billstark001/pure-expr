@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { compileExpression, evaluate, EvalOptions, JSParseError, JSEvalError, JSLexError } from "../src/expr/index.js"
+import { compileExpression, evaluate, EvalOptions, JSEvalError, JSLexError, JSParseError, parseExpression } from "../src/expr/index.js"
 
 function ev(expr: string, ctx: Record<string, unknown> = {}, opts: EvalOptions = {}): unknown {
   return evaluate(expr, ctx, opts)
@@ -49,6 +49,14 @@ describe("evaluator", () => {
     expect(ev('0 ?? 42')).toBe(0)
     expect(ev('false ?? 42')).toBe(false)
   });
+  test('nullish coalescing rejects mixing with && or || without parentheses', () => {
+    expect(() => ev('1 ?? 2 || 3')).toThrow('without parentheses')
+    expect(() => ev('1 && 2 ?? 3')).toThrow('without parentheses')
+  });
+  test('nullish coalescing allows grouped mixes with && or ||', () => {
+    expect(ev('(1 ?? 2) || 3')).toBe(1)
+    expect(ev('1 ?? (2 || 3)')).toBe(1)
+  });
 
   // ── Ternary ───────────────────────────────────────────────────────
   test('ternary basic', () => expect(ev('1 > 0 ? "yes" : "no"')).toBe('yes'));
@@ -77,6 +85,16 @@ describe("evaluator", () => {
     const tag = (strings: TemplateStringsArray, ...vals: unknown[]) =>
       strings.raw.join('') + '|' + vals.join(',')
     expect(ev('tag`a${1}b${2}c`', { tag })).toBe('abc|1,2')
+  });
+  test('tagged template literal preserves method receivers', () => {
+    expect(ev('obj.tag`x`', {
+      obj: {
+        value: 42,
+        tag(this: { value: number }, strings: TemplateStringsArray) {
+          return this.value + strings.length - 1
+        },
+      },
+    })).toBe(42)
   });
   test('template literal can be disabled', () => {
     expect(() => ev('`hello`', {}, { allowTemplateLiterals: false })).toThrow('not enabled')
@@ -240,13 +258,38 @@ describe("evaluator", () => {
   test('in operator: missing key', () =>
     expect(ev('"y" in obj', { obj: { x: 1 } }, { allowIn: true })).toBe(false)
   );
+  test('in operator throws for primitive right-hand sides', () => {
+    expect(() => ev('"x" in value', { value: 1 }, { allowIn: true })).toThrow(TypeError)
+  });
+  test('in operator accepts functions on the right-hand side', () => {
+    expect(ev('"apply" in fn', { fn: () => undefined }, { allowIn: true })).toBe(true)
+  });
   test('instanceof operator', () =>
     expect(ev('arr instanceof Array', { arr: [1, 2], Array })).toBe(true)
   );
 
   // ── Comma / sequence ─────────────────────────────────────────────
-  // Note: sequence as a top-level expression IS supported; each sub-expr is evaluated
-  // For most uses in templates, comma in argument lists is the common case
+  test('sequence operator returns the last expression result', () => {
+    expect(ev('1, 2, 3')).toBe(3)
+  });
+  test('sequence operator evaluates expressions from left to right', () => {
+    const seen: number[] = []
+
+    expect(ev('push(1), push(2), push(3)', {
+      push(value: number) {
+        seen.push(value)
+        return value
+      },
+    })).toBe(3)
+    expect(seen).toEqual([1, 2, 3])
+  });
+  test('parseExpression emits sequence nodes for comma expressions', () => {
+    const parsed = parseExpression('1, 2, 3')
+
+    expect(parsed.type).toBe('sequence')
+    if (parsed.type !== 'sequence') throw new Error('Expected a sequence node')
+    expect(parsed.expressions).toHaveLength(3)
+  });
 
   // ── Security / sandbox ───────────────────────────────────────────
   test('blocked global: eval', () =>

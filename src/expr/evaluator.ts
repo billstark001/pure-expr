@@ -233,7 +233,7 @@ function evalBinary(node: JSBinaryNode, state: EvalState): unknown {
     case '<=': return (l as any) <= (r as any)
     case '>=': return (l as any) >= (r as any)
     case 'instanceof': return (l as any) instanceof (r as any)
-    case 'in': return (r as any) !== null && typeof r === 'object' && (l as any) in (r as any)
+    case 'in': return (l as any) in (r as any)
     default:
       throw new JSEvalError(`Unknown binary operator '${node.operator}'`, node)
   }
@@ -502,7 +502,37 @@ function evalTemplate(
   state: EvalState
 ): unknown {
   if (node.tag) {
-    const tag = evalNode(node.tag, state)
+    let thisVal: unknown = undefined
+    let tag: unknown
+
+    if (node.tag.type === 'member') {
+      const obj = evalNode(node.tag.object, state)
+
+      if (node.tag.optional && obj == null) {
+        tag = undefined
+      } else {
+        if (obj == null) {
+          throw new JSEvalError(
+            `Cannot read properties of ${obj === null ? 'null' : 'undefined'}`,
+            node.tag,
+          )
+        }
+
+        const key = node.tag.computed
+          ? String(evalNode(node.tag.property, state))
+          : (node.tag.property as JSIdentifierNode).name
+
+        if (BLOCKED_PROPS.has(key)) {
+          throw new JSEvalError(`Access to property '${key}' is not permitted`, node.tag)
+        }
+
+        thisVal = obj
+        tag = (obj as any)[key]
+      }
+    } else {
+      tag = evalNode(node.tag, state)
+    }
+
     if (typeof tag !== 'function')
       throw new JSEvalError('Template tag must be a function', node)
 
@@ -517,7 +547,7 @@ function evalTemplate(
       args[index + 1] = evalNode(node.expressions[index], state)
     }
 
-    return safeCall(tag, undefined, args, node, state)
+    return safeCall(tag, thisVal, args, node, state)
   }
 
   // Untagged: interleave quasis and expressions

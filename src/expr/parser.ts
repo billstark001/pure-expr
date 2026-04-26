@@ -1,5 +1,5 @@
 import { cookTemplate, JSToken, JSTokenKind } from "./lexer.js"
-import { JSExprNode, JSMemberNode, JSCallNode, JSConditionalNode, JSBinaryNode, JSLogicalNode, JSPipelineNode, JSSpreadNode, JSObjectPropNode, JSTemplateNode } from "./node-types.js"
+import { JSExprNode, JSMemberNode, JSCallNode, JSConditionalNode, JSBinaryNode, JSLogicalNode, JSPipelineNode, JSSpreadNode, JSObjectPropNode, JSSequenceNode, JSTemplateNode } from "./node-types.js"
 
 
 function parseStringValue(raw: string): string {
@@ -91,6 +91,7 @@ const FORBIDDEN_PREFIX_IDENTIFIERS = new Set([
 /** Pratt-style parser that converts tokens into expression AST nodes. */
 export class JSExpressionParser {
   private pos = 0
+  private readonly parenthesizedNodes = new WeakSet<JSExprNode>()
   private readonly src: string
 
   constructor(
@@ -197,6 +198,21 @@ export class JSExpressionParser {
         continue
       }
 
+      // ── Sequence (comma operator) ─────────────────────────────────
+      if (t.kind === 'op' && t.raw === ',' && PREC.COMMA >= minPrec) {
+        this.advance()
+        const right = this.parseExpr(PREC.COMMA + 1)
+        left = {
+          type: 'sequence',
+          expressions: left.type === 'sequence'
+            ? [...left.expressions, right]
+            : [left, right],
+          start: left.start,
+          end: this.lastEnd(),
+        } satisfies JSSequenceNode
+        continue
+      }
+
       // ── `in` keyword as infix operator (if enabled) ───────────────
       if (t.kind === 'identifier' && t.raw === 'in' && this.opts.allowIn !== false) {
         const prec = PREC.RELATIONAL
@@ -233,6 +249,7 @@ export class JSExpressionParser {
 
         // Logical operators get their own node type
         if (t.raw === '&&' || t.raw === '||' || t.raw === '??') {
+          this.assertValidLogicalMixing(t.raw, left, right, t)
           left = { type: 'logical', operator: t.raw as any, left, right, start: t.start, end: this.lastEnd() } satisfies JSLogicalNode
         } else if (t.raw === '|>') {
           left = { type: 'pipeline', left, right, start: t.start, end: this.lastEnd() } satisfies JSPipelineNode
@@ -342,6 +359,7 @@ export class JSExpressionParser {
         }
         const expr = this.parseExpr(0)
         this.expectOp(')')
+        this.parenthesizedNodes.add(expr)
         return expr
       }
 
@@ -472,6 +490,35 @@ export class JSExpressionParser {
   private peek(): JSToken | undefined { return this.tokens[this.pos] }
   private advance(): JSToken | undefined { return this.tokens[this.pos++] }
   private lastEnd(): number { return this.tokens[this.pos - 1]?.end ?? 0 }
+
+  private assertValidLogicalMixing(
+    operator: '&&' | '||' | '??',
+    left: JSExprNode,
+    right: JSExprNode,
+    token: JSToken,
+  ): void {
+    const mixesNullishWithBoolean = operator === '??'
+      ? this.isUnparenthesizedShortCircuit(left) || this.isUnparenthesizedShortCircuit(right)
+      : this.isUnparenthesizedNullish(left) || this.isUnparenthesizedNullish(right)
+
+    if (mixesNullishWithBoolean) {
+      throw new JSParseError(
+        "Cannot mix '??' with '&&' or '||' without parentheses",
+        token,
+        this.src,
+      )
+    }
+  }
+
+  private isUnparenthesizedNullish(node: JSExprNode): boolean {
+    return !this.parenthesizedNodes.has(node) && node.type === 'logical' && node.operator === '??'
+  }
+
+  private isUnparenthesizedShortCircuit(node: JSExprNode): boolean {
+    return !this.parenthesizedNodes.has(node)
+      && node.type === 'logical'
+      && (node.operator === '&&' || node.operator === '||')
+  }
 
   private expect(kind: JSTokenKind, msg?: string): JSToken {
     const t = this.advance()
