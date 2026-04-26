@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
   PrattParser,
+  compile,
   compileExpression,
   parseExpression,
   parseTemplate,
@@ -30,6 +31,13 @@ describe('public API', () => {
 
     expect(compiled.evaluate({ count: 1 })).toBe(2);
     expect(compiled.evaluate({ count: 4 })).toBe(5);
+  });
+
+  test('compile alias is exported from the root entrypoint', () => {
+    const compiled = compile('count + 2');
+
+    expect(compiled.source).toBe('count + 2');
+    expect(compiled.evaluate({ count: 3 })).toBe(5);
   });
 
   test('template helpers remain available from the root entrypoint', () => {

@@ -45,6 +45,7 @@
     "build": "pnpm run build:js && pnpm run build:types",
     "build:js": "node ./scripts/build.mjs",
     "build:types": "tsc -p tsconfig.build.json",
+    "bench:expr": "pnpm run build:js && node ./scripts/bench-expr-modes.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",

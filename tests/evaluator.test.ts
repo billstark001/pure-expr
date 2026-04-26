@@ -113,6 +113,19 @@ describe("evaluator", () => {
     expect(seen[0]).toBe(seen[1])
     expect(second).toEqual(first)
   });
+  test('compiled expressions do not leak nested evaluation context', () => {
+    const compiled = compileExpression('fn(value) + value')
+
+    const result = compiled.evaluate({
+      value: 1,
+      fn: (value: number) => compiled.evaluate({
+        value: value + 1,
+        fn: (inner: number) => inner * 2,
+      }),
+    })
+
+    expect(result).toBe(7)
+  });
   test('tagged template literal supports loose array emulation mode', () => {
     const tag = (strings: TemplateStringsArray) => ({
       frozen: Object.isFrozen(strings),

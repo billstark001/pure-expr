@@ -51,6 +51,11 @@ const RX_STRING  = /(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/y
 const RX_IDENT   = /[a-zA-Z_$][\w$]*/y
 const RX_OP      = /(?:>>>=|\.{3}|===|!==|>>>|<<=|>>=|\+=|-=|\*=|\/=|%=|&=|\|=|\^=|\?\?=|\|\|=|&&=|\*\*=|\+\+|--|==|!=|<=|>=|<<|>>|\*\*|&&|\|\||\?\?|\|>|\?\.|=>|[=+\-*\/%&|^~!<>?:.,()[\]{};])/y
 
+const REGEX_CONTEXT_KEYWORDS = new Set([
+  'typeof', 'void', 'instanceof', 'in', 'return', 'throw',
+  'case', 'else', 'new', 'delete', 'await', 'of',
+])
+
 function stickyAt<T extends RegExp>(re: T, src: string, pos: number): RegExpExecArray | null {
   re.lastIndex = pos
   return re.exec(src)
@@ -104,10 +109,7 @@ export class JSLexer {
     if (prev.length === 0) return true
     const last = prev[prev.length - 1]
     if (last.kind === 'identifier') {
-      return new Set([
-        'typeof','void','instanceof','in','return','throw',
-        'case','else','new','delete','await','of',
-      ]).has(last.raw)
+      return REGEX_CONTEXT_KEYWORDS.has(last.raw)
     }
     if (last.kind === 'op') {
       return ![')', ']', '}'].includes(last.raw)

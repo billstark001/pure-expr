@@ -19,7 +19,7 @@ This package is ESM-only and targets modern runtimes.
 
 ```ts
 import {
- compileExpression,
+ compile,
  evaluate,
  renderTemplate,
 } from 'simple-expr';
@@ -27,7 +27,7 @@ import {
 const total = evaluate('price * quantity', { price: 12, quantity: 3 });
 // 36
 
-const compiled = compileExpression('user.name ?? "anonymous"');
+const compiled = compile('user.name ?? "anonymous"');
 compiled.evaluate({ user: { name: 'Ada' } });
 compiled.evaluate({ user: {} });
 
@@ -40,7 +40,7 @@ const rendered = renderTemplate('Hello {{ user.name }}!', {
 ## Entry Points
 
 ```ts
-import { evaluate, compileExpression } from 'simple-expr';
+import { evaluate, compile } from 'simple-expr';
 import { parseExpression, tokenizeExpression } from 'simple-expr/expr';
 import { parseTemplate, renderTemplate } from 'simple-expr/template';
 ```
@@ -57,6 +57,7 @@ The expression engine supports:
 Useful expression APIs:
 
 - evaluate(source, scope, options): parse and evaluate once
+- compile(source, options): shorter alias for compileExpression(source, options)
 - compileExpression(source, options): parse once and evaluate many times
 - tokenizeExpression(source): inspect lexer output
 - parseExpression(source, options): inspect the AST directly
@@ -96,5 +97,8 @@ const rendered = renderTemplate('Hi {{ user.name }}', {
 
 ```sh
 pnpm install
+pnpm run bench:expr
 pnpm run ci
 ```
+
+The benchmark command compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, and short repeated expressions.

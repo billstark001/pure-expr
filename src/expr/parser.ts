@@ -79,6 +79,14 @@ const INFIX_PREC: Record<string, number> = {
 }
 
 const RIGHT_ASSOC = new Set(['**'])
+const FORBIDDEN_ASSIGNMENT_OPERATORS = new Set([
+  '=', '+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=',
+  '<<=', '>>=', '>>>=', '&&=', '||=', '??=',
+])
+const FORBIDDEN_PREFIX_IDENTIFIERS = new Set([
+  'new', 'delete', 'yield', 'return', 'throw',
+  'var', 'let', 'const', 'function', 'class',
+])
 
 /** Pratt-style parser that converts tokens into expression AST nodes. */
 export class JSExpressionParser {
@@ -212,8 +220,7 @@ export class JSExpressionParser {
       // ── Regular infix operators ───────────────────────────────────
       if (t.kind === 'op') {
         // Block forbidden assignment operators
-        const FORBIDDEN = new Set(['=', '+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=', '<<=', '>>=', '>>>=', '&&=', '||=', '??='])
-        if (FORBIDDEN.has(t.raw))
+        if (FORBIDDEN_ASSIGNMENT_OPERATORS.has(t.raw))
           throw new JSParseError(`Assignment operator '${t.raw}' is not allowed in read-only expressions`, t, this.src)
 
         const prec = INFIX_PREC[t.raw]
@@ -293,8 +300,7 @@ export class JSExpressionParser {
     // ── Identifier ──────────────────────────────────────────────────
     if (t.kind === 'identifier') {
       // Forbidden constructs in prefix position
-      const FORBIDDEN_IDS = new Set(['new', 'delete', 'yield', 'return', 'throw', 'var', 'let', 'const', 'function', 'class'])
-      if (FORBIDDEN_IDS.has(t.raw))
+      if (FORBIDDEN_PREFIX_IDENTIFIERS.has(t.raw))
         throw new JSParseError(`'${t.raw}' is not allowed in read-only expressions`, t, this.src)
 
       // Unary keyword operators

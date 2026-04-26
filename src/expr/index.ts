@@ -86,16 +86,19 @@ export function compileExpression(
   options: EvalOptions = {}
 ): CompiledExpression {
   const ast = parseExpression(expression, options)
+  const evaluator = new JSEvaluator({}, options)
 
   return {
     source: expression,
     ast,
     evaluate(context: Record<string, unknown> = {}) {
-      const evaluator = new JSEvaluator(context, options)
-      return evaluator.eval(ast)
+      return evaluator.evaluate(ast, context)
     },
   }
 }
+
+/** Alias for compileExpression(...) with a shorter name. */
+export const compile = compileExpression
 
 /**
  * Parse and evaluate a JS expression string in a readonly context.
@@ -124,6 +127,10 @@ export function evaluate(
  * Useful when the same options are used across many evaluations.
  */
 export function createEvaluator(options: EvalOptions = {}) {
-  return (expression: string, context: Record<string, unknown> = {}) =>
-    evaluate(expression, context, options)
+  const evaluator = new JSEvaluator({}, options)
+
+  return (expression: string, context: Record<string, unknown> = {}) => {
+    const ast = parseExpression(expression, options)
+    return evaluator.evaluate(ast, context)
+  }
 }
