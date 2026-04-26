@@ -38,6 +38,16 @@ interface EvalState {
   opts: Readonly<JSEvalOptions>
 }
 
+const EMPTY_CONTEXT: Readonly<Record<string, unknown>> = Object.freeze({})
+const EMPTY_OPTS: Readonly<JSEvalOptions> = Object.freeze({})
+
+function hasOwnEnumerableKeys(value: Readonly<Record<string, unknown>>): boolean {
+  for (const key in value) {
+    if (Object.hasOwn(value, key)) return true
+  }
+  return false
+}
+
 const SPEC_TEMPLATE_OBJECT_CACHE = new WeakMap<JSTemplateNode, EmulatedTemplateStringsArray>()
 const LOOSE_TEMPLATE_OBJECT_CACHE = new WeakMap<JSTemplateNode, EmulatedTemplateStringsArray>()
 
@@ -163,7 +173,7 @@ export function evalNode(node: JSExprNode, state: EvalState): unknown {
       const fn = evalNode(node.right, state)
       if (typeof fn !== 'function')
         throw new JSEvalError('Right-hand side of |> must be a function', node)
-      return safeCall(fn, undefined, [value], node, state)
+      return safeCall1(fn, undefined, value, node, state)
     }
 
     default: {
@@ -289,17 +299,180 @@ function evalCall(node: JSCallNode, state: EvalState): unknown {
       node
     )
 
-  const args = evalArgs(node.args, state)
+  const argNodes = node.args
+
+  switch (argNodes.length) {
+    case 0:
+      return safeCall0(fn, thisVal, node, state)
+    case 1:
+      if (argNodes[0].type !== 'spread') {
+        return safeCall1(fn, thisVal, evalNode(argNodes[0], state), node, state)
+      }
+      break
+    case 2:
+      if (argNodes[0].type !== 'spread' && argNodes[1].type !== 'spread') {
+        return safeCall2(
+          fn,
+          thisVal,
+          evalNode(argNodes[0], state),
+          evalNode(argNodes[1], state),
+          node,
+          state,
+        )
+      }
+      break
+    case 3:
+      if (argNodes[0].type !== 'spread' && argNodes[1].type !== 'spread' && argNodes[2].type !== 'spread') {
+        return safeCall3(
+          fn,
+          thisVal,
+          evalNode(argNodes[0], state),
+          evalNode(argNodes[1], state),
+          evalNode(argNodes[2], state),
+          node,
+          state,
+        )
+      }
+      break
+    case 4:
+      if (
+        argNodes[0].type !== 'spread'
+        && argNodes[1].type !== 'spread'
+        && argNodes[2].type !== 'spread'
+        && argNodes[3].type !== 'spread'
+      ) {
+        return safeCall4(
+          fn,
+          thisVal,
+          evalNode(argNodes[0], state),
+          evalNode(argNodes[1], state),
+          evalNode(argNodes[2], state),
+          evalNode(argNodes[3], state),
+          node,
+          state,
+        )
+      }
+      break
+  }
+
+  const args = evalArgs(argNodes, state)
   return safeCall(fn, thisVal, args, node, state)
 }
 
 function evalArgs(args: Array<JSExprNode | JSSpreadNode>, state: EvalState): unknown[] {
+  let hasSpread = false
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index].type === 'spread') {
+      hasSpread = true
+      break
+    }
+  }
+
+  if (!hasSpread) {
+    const result = new Array<unknown>(args.length)
+    for (let index = 0; index < args.length; index += 1) {
+      result[index] = evalNode(args[index], state)
+    }
+    return result
+  }
+
   const result: unknown[] = []
   for (const arg of args) {
     if (arg.type === 'spread') result.push(...(evalNode(arg.argument, state) as any))
     else result.push(evalNode(arg, state))
   }
   return result
+}
+
+function enterCall(node: JSExprNode, state: EvalState): void {
+  const max = state.opts.maxCallDepth ?? 32
+  if (state.callDepth >= max)
+    throw new JSEvalError(`Maximum call depth (${max}) exceeded`, node)
+  state.callDepth += 1
+}
+
+function leaveCall(state: EvalState): void {
+  state.callDepth -= 1
+}
+
+function safeCall0(
+  fn: Function,
+  thisVal: unknown,
+  node: JSExprNode,
+  state: EvalState,
+): unknown {
+  enterCall(node, state)
+  try {
+    return fn.call(thisVal)
+  } finally {
+    leaveCall(state)
+  }
+}
+
+function safeCall1(
+  fn: Function,
+  thisVal: unknown,
+  arg0: unknown,
+  node: JSExprNode,
+  state: EvalState,
+): unknown {
+  enterCall(node, state)
+  try {
+    return fn.call(thisVal, arg0)
+  } finally {
+    leaveCall(state)
+  }
+}
+
+function safeCall2(
+  fn: Function,
+  thisVal: unknown,
+  arg0: unknown,
+  arg1: unknown,
+  node: JSExprNode,
+  state: EvalState,
+): unknown {
+  enterCall(node, state)
+  try {
+    return fn.call(thisVal, arg0, arg1)
+  } finally {
+    leaveCall(state)
+  }
+}
+
+function safeCall3(
+  fn: Function,
+  thisVal: unknown,
+  arg0: unknown,
+  arg1: unknown,
+  arg2: unknown,
+  node: JSExprNode,
+  state: EvalState,
+): unknown {
+  enterCall(node, state)
+  try {
+    return fn.call(thisVal, arg0, arg1, arg2)
+  } finally {
+    leaveCall(state)
+  }
+}
+
+function safeCall4(
+  fn: Function,
+  thisVal: unknown,
+  arg0: unknown,
+  arg1: unknown,
+  arg2: unknown,
+  arg3: unknown,
+  node: JSExprNode,
+  state: EvalState,
+): unknown {
+  enterCall(node, state)
+  try {
+    return fn.call(thisVal, arg0, arg1, arg2, arg3)
+  } finally {
+    leaveCall(state)
+  }
 }
 
 function safeCall(
@@ -309,14 +482,18 @@ function safeCall(
   node: JSExprNode,
   state: EvalState,
 ): unknown {
-  const max = state.opts.maxCallDepth ?? 32
-  if (state.callDepth >= max)
-    throw new JSEvalError(`Maximum call depth (${max}) exceeded`, node)
-  state.callDepth++
+  enterCall(node, state)
   try {
-    return fn.apply(thisVal, args)
+    switch (args.length) {
+      case 0: return fn.call(thisVal)
+      case 1: return fn.call(thisVal, args[0])
+      case 2: return fn.call(thisVal, args[0], args[1])
+      case 3: return fn.call(thisVal, args[0], args[1], args[2])
+      case 4: return fn.call(thisVal, args[0], args[1], args[2], args[3])
+      default: return fn.apply(thisVal, args)
+    }
   } finally {
-    state.callDepth--
+    leaveCall(state)
   }
 }
 
@@ -324,8 +501,6 @@ function evalTemplate(
   node: JSTemplateNode,
   state: EvalState
 ): unknown {
-  const parts = node.expressions.map((expression) => evalNode(expression, state))
-
   if (node.tag) {
     const tag = evalNode(node.tag, state)
     if (typeof tag !== 'function')
@@ -336,14 +511,20 @@ function evalTemplate(
       state.opts.taggedTemplateArrayMode ?? 'spec'
     )
 
-    return safeCall(tag, undefined, [templateObject, ...parts], node, state)
+    const args = new Array<unknown>(node.expressions.length + 1)
+    args[0] = templateObject
+    for (let index = 0; index < node.expressions.length; index += 1) {
+      args[index + 1] = evalNode(node.expressions[index], state)
+    }
+
+    return safeCall(tag, undefined, args, node, state)
   }
 
   // Untagged: interleave quasis and expressions
   let result = ''
   for (let i = 0; i < node.quasis.length; i++) {
     result += node.quasis[i].cooked ?? node.quasis[i].raw
-    if (i < parts.length) result += String(parts[i])
+    if (i < node.expressions.length) result += String(evalNode(node.expressions[i], state))
   }
   return result
 }
@@ -351,20 +532,28 @@ function evalTemplate(
 
 /** Evaluates expression AST nodes against a readonly scope object. */
 export class JSEvaluator {
-
-  private state: EvalState | null = null
+  private readonly hasBaseContext: boolean
+  private readonly resolvedOpts: Readonly<JSEvalOptions>
 
   constructor(
-    private readonly context: Readonly<Record<string, unknown>> = {},
-    private readonly opts: JSEvalOptions = {}
-  ) { }
+    private readonly context: Readonly<Record<string, unknown>> = EMPTY_CONTEXT,
+    opts: JSEvalOptions = EMPTY_OPTS
+  ) {
+    this.hasBaseContext = hasOwnEnumerableKeys(context)
+    this.resolvedOpts = opts
+  }
 
   evaluate(
     node: JSExprNode,
-    context: Readonly<Record<string, unknown>> = {}
+    context: Readonly<Record<string, unknown>> = EMPTY_CONTEXT
   ): unknown {
-    this.state = createEvalState({ ...this.context, ...context }, { ...this.opts })
-    return evalNode(node, this.state)
+    const stateContext = context === EMPTY_CONTEXT
+      ? this.context
+      : this.hasBaseContext
+        ? { ...this.context, ...context }
+        : context
+
+    return evalNode(node, createEvalState(stateContext, this.resolvedOpts))
   }
 
 }

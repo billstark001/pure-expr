@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   compile,
   compileExpression,
+  JSEvaluator,
   parseExpression,
   parseTemplate,
   renderTemplate,
@@ -37,6 +38,15 @@ describe('public API', () => {
 
     expect(compiled.source).toBe('count + 2');
     expect(compiled.evaluate({ count: 3 })).toBe(5);
+  });
+
+  test('JSEvaluator merges base and per-call contexts without leaking overrides', () => {
+    const evaluator = new JSEvaluator({ count: 1, step: 2 });
+    const ast = parseExpression('count + step');
+
+    expect(evaluator.evaluate(ast)).toBe(3);
+    expect(evaluator.evaluate(ast, { count: 5 })).toBe(7);
+    expect(evaluator.evaluate(ast)).toBe(3);
   });
 
   test('template helpers remain available from the root entrypoint', () => {

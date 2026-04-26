@@ -72,14 +72,23 @@ const CASES = [
 const DIRECT_LABEL = 'direct evaluate';
 const COMPILED_LABEL = 'compiled evaluate';
 const WARMUP_RATIO = 0.05;
+const SAMPLE_COUNT = 5;
 
 function measure(iterations, fn) {
   let lastResult;
-  const startedAt = performance.now();
-  for (let index = 0; index < iterations; index += 1) {
-    lastResult = fn();
+  const elapsedSamples = [];
+
+  for (let sampleIndex = 0; sampleIndex < SAMPLE_COUNT; sampleIndex += 1) {
+    const startedAt = performance.now();
+    for (let index = 0; index < iterations; index += 1) {
+      lastResult = fn();
+    }
+    elapsedSamples.push(performance.now() - startedAt);
   }
-  const elapsedMs = performance.now() - startedAt;
+
+  const sortedSamples = elapsedSamples.slice().sort((left, right) => left - right);
+  const elapsedMs = sortedSamples[Math.floor(sortedSamples.length / 2)];
+
   return {
     elapsedMs,
     lastResult,
@@ -148,6 +157,7 @@ for (const benchmarkCase of CASES) {
 
 console.log('expr mode benchmark');
 console.log(`node ${process.version}`);
+console.log(`median of ${SAMPLE_COUNT} samples per measurement`);
 console.log('');
 
 const headers = [
