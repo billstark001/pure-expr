@@ -4,6 +4,7 @@ import {
   allowAllCalls,
   compile,
   compileExpression,
+  compileTemplate,
   defaultCallPermissionPolicy,
   JSEvaluator,
   parseExpression,
@@ -69,6 +70,13 @@ describe('public API', () => {
   test('template helpers remain available from the root entrypoint', () => {
     expect(parseTemplate('Hi {{ name }}').segments).toHaveLength(2)
     expect(renderTemplate('Hi {{ name }}', { name: 'Ada' }).output).toBe('Hi Ada')
+  })
+
+  test('compileTemplate is exported from the root entrypoint', () => {
+    const compiled = compileTemplate('Hi {{ name }}')
+
+    expect(compiled.source).toBe('Hi {{ name }}')
+    expect(compiled.render({ name: 'Ada' }).output).toBe('Hi Ada')
   })
 })
 

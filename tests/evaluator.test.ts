@@ -356,7 +356,7 @@ describe('evaluator', () => {
     class Scope {
       count = 2
     }
-    ;(Scope.prototype as unknown as Record<string, unknown>).hidden = 99
+    ; (Scope.prototype as unknown as Record<string, unknown>).hidden = 99
 
     expect(
       evaluate('count', new Scope() as unknown as Record<string, unknown>, {
@@ -368,6 +368,51 @@ describe('evaluator', () => {
         rootContextMode: 'copy-non-plain-to-null-prototype',
       }),
     ).toThrow('not defined')
+  })
+  test('copy-plain-data-to-null-prototype rejects accessor properties without invoking getters', () => {
+    let getterHits = 0
+    const nested = Object.defineProperty({}, 'value', {
+      enumerable: true,
+      get() {
+        getterHits += 1
+        return 2
+      },
+    })
+
+    expect(() =>
+      evaluate(
+        'nested.value',
+        { nested } as Record<string, unknown>,
+        {
+          rootContextMode: 'copy-plain-data-to-null-prototype',
+        },
+      ),
+    ).toThrow('accessor properties')
+    expect(getterHits).toBe(0)
+  })
+  test('copy-plain-data-to-null-prototype rejects circular references', () => {
+    const context = { value: 1 } as Record<string, unknown>
+    context.self = context
+
+    expect(() =>
+      evaluate('value', context, {
+        rootContextMode: 'copy-plain-data-to-null-prototype',
+      }),
+    ).toThrow('circular references')
+  })
+  test('copy-plain-data-to-null-prototype supports nested plain data graphs', () => {
+    expect(
+      evaluate(
+        'nested.value + items[0]',
+        {
+          nested: { value: 4 },
+          items: [3, 2, 1],
+        },
+        {
+          rootContextMode: 'copy-plain-data-to-null-prototype',
+        },
+      ),
+    ).toBe(7)
   })
   test('default object spread mode filters blocked keys', () => {
     const payload = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>
@@ -411,6 +456,26 @@ describe('evaluator', () => {
   })
   test('max steps rejects expensive evaluations', () => {
     expect(() => ev('1 + 2 + 3', {}, { maxSteps: 4 })).toThrow('Maximum evaluation steps')
+  })
+  test('max steps counts spread elements in array literals', () => {
+    expect(() => ev('[...items]', { items: [1, 2, 3] }, { maxSteps: 5 })).toThrow(
+      'Maximum evaluation steps',
+    )
+  })
+  test('max steps counts spread elements in call arguments', () => {
+    expect(() =>
+      ev(
+        'collect(...items)',
+        {
+          items: [1, 2, 3],
+          collect: (...values: number[]) => values.length,
+        },
+        {
+          ...ALLOW_ALL_CALLS,
+          maxSteps: 5,
+        },
+      ),
+    ).toThrow('Maximum evaluation steps')
   })
   test('undefined variable throws JSEvalError', () =>
     expect(() => ev('notDefined')).toThrow('not defined'))

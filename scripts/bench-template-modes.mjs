@@ -1,85 +1,95 @@
 import { performance } from 'node:perf_hooks'
 
-import { allowAllCalls, compile, evaluate } from '../dist/esm/index.js'
+import { allowAllCalls, compileTemplate, renderTemplate } from '../dist/esm/index.js'
 
 // #region Benchmark cases
 
+const BASE_OPTIONS = Object.freeze({
+  evalOptions: {
+    isCallableAllowed: allowAllCalls,
+  },
+})
+
 const CASES = [
   {
-    name: 'arithmetic-heavy',
-    expression: '((a + b * c - d / e) ** 2 + (f % g) - (h << 1)) / i',
-    context: { a: 3, b: 5, c: 8, d: 144, e: 3, f: 29, g: 7, h: 4, i: 5 },
-    iterations: 120_000,
-    expected: 3.6,
-  },
-  {
-    name: 'member-access-heavy',
-    expression:
-      'user.profile.metrics.primary.current + user.profile.metrics.secondary.current + account.plan.name.length + account.flags.beta.value',
+    name: 'member-heavy-text',
+    template:
+      'Hello {{ user.profile.name }}, plan={{ account.plan.name }}, seats={{ account.plan.seats }}, beta={{ account.flags.beta.enabled }}.',
     context: {
       user: {
         profile: {
-          metrics: {
-            primary: { current: 41 },
-            secondary: { current: 9 },
-          },
+          name: 'Ada',
         },
       },
       account: {
-        plan: { name: 'growth' },
-        flags: { beta: { value: 4 } },
+        plan: {
+          name: 'growth',
+          seats: 12,
+        },
+        flags: {
+          beta: {
+            enabled: true,
+          },
+        },
       },
     },
+    options: BASE_OPTIONS,
     iterations: 120_000,
-    expected: 60,
+    expected: 'Hello Ada, plan=growth, seats=12, beta=true.',
   },
   {
-    name: 'call-heavy',
-    expression: 'sum(double(a), scale(b), math.max(c, d), lookup("key"))',
+    name: 'call-heavy-text',
+    template:
+      'Total {{ format(sum(double(price), tax, lookup(code))) }} for {{ customer.name.toUpperCase() }}',
     context: {
-      a: 2,
-      b: 5,
-      c: 7,
-      d: 11,
+      price: 12,
+      tax: 3,
+      code: 'starter',
+      customer: {
+        name: 'ada',
+      },
       double: (value) => value * 2,
-      scale: (value) => value * 3,
       sum: (...values) => values.reduce((total, value) => total + value, 0),
-      lookup: (key) => ({ key: 13 })[key] ?? 0,
-      math: Math,
+      lookup: (key) => ({ starter: 5 })[key] ?? 0,
+      format: (value) => `$${value.toFixed(2)}`,
     },
-    iterations: 100_000,
-    expected: 43,
+    options: BASE_OPTIONS,
+    iterations: 90_000,
+    expected: 'Total $32.00 for ADA',
   },
   {
-    name: 'template-literal-heavy',
-    expression:
-      '`user:${user.name}|count:${stats.count}|total:${format(total)}|first:${items[0]?.label ?? "none"}`',
+    name: 'html-escaped',
+    template:
+      '<article><h1>{{ title }}</h1><p>{{ body }}</p><footer>{{ author.name }}</footer></article>',
     context: {
-      user: { name: 'Ada' },
-      stats: { count: 12 },
-      total: 19.5,
-      items: [{ label: 'starter' }],
-      format: (value) => value.toFixed(2),
+      title: '<Admin & Co>',
+      body: 'Use "quotes" & <tags>',
+      author: {
+        name: "O'Hara",
+      },
     },
-    iterations: 90_000,
-    expected: 'user:Ada|count:12|total:19.50|first:starter',
+    options: {
+      ...BASE_OPTIONS,
+      format: 'html',
+    },
+    iterations: 110_000,
+    expected:
+      '<article><h1>&lt;Admin &amp; Co&gt;</h1><p>Use &quot;quotes&quot; &amp; &lt;tags&gt;</p><footer>O&#39;Hara</footer></article>',
   },
   {
     name: 'short-repeated',
-    expression: 'count + 1',
-    context: { count: 41 },
-    iterations: 300_000,
-    expected: 42,
+    template: 'Count={{ count }}',
+    context: { count: 42 },
+    options: BASE_OPTIONS,
+    iterations: 250_000,
+    expected: 'Count=42',
   },
 ]
 
-const DIRECT_LABEL = 'direct evaluate'
-const COMPILED_LABEL = 'compiled evaluate'
+const DIRECT_LABEL = 'direct render'
+const COMPILED_LABEL = 'compiled render'
 const WARMUP_RATIO = 0.05
 const SAMPLE_COUNT = 5
-const BENCH_EVAL_OPTIONS = Object.freeze({
-  isCallableAllowed: allowAllCalls,
-})
 
 // #endregion
 
@@ -131,10 +141,8 @@ function pad(value, width) {
 }
 
 function assertExpected(caseName, label, actual, expected) {
-  if (!Object.is(actual, expected)) {
-    throw new Error(
-      `${caseName}: ${label} produced ${String(actual)} instead of ${String(expected)}`,
-    )
+  if (actual !== expected) {
+    throw new Error(`${caseName}: ${label} produced ${actual} instead of ${expected}`)
   }
 }
 
@@ -145,19 +153,19 @@ function assertExpected(caseName, label, actual, expected) {
 const rows = []
 
 for (const benchmarkCase of CASES) {
-  const { name, expression, context, iterations, expected } = benchmarkCase
+  const { name, template, context, options, iterations, expected } = benchmarkCase
   const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO))
   const compileIterations = Math.max(2_000, Math.floor(iterations / 60))
 
-  const compiled = compile(expression, BENCH_EVAL_OPTIONS)
+  const compiled = compileTemplate(template, options)
 
-  warmup(() => evaluate(expression, context, BENCH_EVAL_OPTIONS), warmupIterations)
-  warmup(() => compiled.evaluate(context), warmupIterations)
-  warmup(() => compile(expression, BENCH_EVAL_OPTIONS), Math.min(compileIterations, warmupIterations))
+  warmup(() => renderTemplate(template, context, options).output, warmupIterations)
+  warmup(() => compiled.render(context).output, warmupIterations)
+  warmup(() => compileTemplate(template, options), Math.min(compileIterations, warmupIterations))
 
-  const direct = measure(iterations, () => evaluate(expression, context, BENCH_EVAL_OPTIONS))
-  const compiledRun = measure(iterations, () => compiled.evaluate(context))
-  const compileOnly = measure(compileIterations, () => compile(expression, BENCH_EVAL_OPTIONS))
+  const direct = measure(iterations, () => renderTemplate(template, context, options).output)
+  const compiledRun = measure(iterations, () => compiled.render(context).output)
+  const compileOnly = measure(compileIterations, () => compileTemplate(template, options))
 
   assertExpected(name, DIRECT_LABEL, direct.lastResult, expected)
   assertExpected(name, COMPILED_LABEL, compiledRun.lastResult, expected)
@@ -172,7 +180,7 @@ for (const benchmarkCase of CASES) {
   })
 }
 
-console.log('expr mode benchmark')
+console.log('template mode benchmark')
 console.log(`node ${process.version}`)
 console.log(`median of ${SAMPLE_COUNT} samples per measurement`)
 console.log('')

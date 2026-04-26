@@ -70,7 +70,11 @@ const BLOCKED_GLOBALS = new Set([
 
 export type TaggedTemplateArrayMode = 'spec' | 'loose'
 
-export type RootContextMode = 'allow' | 'copy-non-plain-to-null-prototype' | 'require-plain-object'
+export type RootContextMode =
+  | 'allow'
+  | 'copy-non-plain-to-null-prototype'
+  | 'require-plain-object'
+  | 'copy-plain-data-to-null-prototype'
 export type ObjectLiteralMode = 'none' | 'filter-blocked' | 'plain-object-only' | 'safe'
 export type JSCallKind = 'call' | 'pipeline' | 'tagged-template'
 export type JSCallable = CallableFunction
@@ -122,11 +126,97 @@ function createNullPrototypeRecord(): Record<string, unknown> {
   return Object.create(null) as Record<string, unknown>
 }
 
+function isPlainDataContainer(value: object): boolean {
+  return Array.isArray(value) || isPlainObjectRecord(value)
+}
+
 function copyOwnEnumerableToNullPrototype(source: object): Record<string, unknown> {
   const result = createNullPrototypeRecord()
   const record = source as Record<string, unknown>
   for (const key of Object.keys(record)) result[key] = record[key]
   return result
+}
+
+function getOwnKeysForDataCopy(source: object, label: string): PropertyKey[] {
+  try {
+    return Reflect.ownKeys(source)
+  } catch {
+    throw new JSEvalError(`${label} could not be inspected safely`)
+  }
+}
+
+function getOwnDescriptorForDataCopy(
+  source: object,
+  key: PropertyKey,
+  label: string,
+): PropertyDescriptor | undefined {
+  try {
+    return Object.getOwnPropertyDescriptor(source, key)
+  } catch {
+    throw new JSEvalError(`${label} could not be inspected safely`)
+  }
+}
+
+function clonePlainDataValue(
+  value: unknown,
+  label: string,
+  cloned: WeakMap<object, unknown>,
+  visiting: WeakSet<object>,
+): unknown {
+  if (!isObjectLike(value)) return value
+
+  const existing = cloned.get(value)
+  if (existing !== undefined) {
+    if (visiting.has(value)) {
+      throw new JSEvalError(`${label} must not contain circular references`)
+    }
+    return existing
+  }
+
+  if (!isPlainDataContainer(value)) {
+    throw new JSEvalError(
+      `${label} must contain only plain objects, null-prototype objects, arrays, and primitives`,
+    )
+  }
+
+  const result: unknown[] | Record<string, unknown> = Array.isArray(value)
+    ? []
+    : createNullPrototypeRecord()
+  cloned.set(value, result)
+  visiting.add(value)
+
+  for (const key of getOwnKeysForDataCopy(value, label)) {
+    if (Array.isArray(result) && key === 'length') continue
+
+    const descriptor = getOwnDescriptorForDataCopy(value, key, label)
+    if (!descriptor) continue
+    if ('get' in descriptor || 'set' in descriptor) {
+      throw new JSEvalError(`${label} must not contain accessor properties`)
+    }
+
+    Object.defineProperty(result, key, {
+      value: clonePlainDataValue(descriptor.value, label, cloned, visiting),
+      enumerable: descriptor.enumerable,
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  visiting.delete(value)
+  return result
+}
+
+function copyPlainDataRootToNullPrototype(
+  context: Readonly<Record<string, unknown>>,
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (!isPlainObjectRecord(context)) {
+    throw new JSEvalError(`${label} must be a plain object or null-prototype object`)
+  }
+
+  return clonePlainDataValue(context, label, new WeakMap(), new WeakSet()) as Readonly<
+    Record<string, unknown>
+  >
 }
 
 function normalizeContextRoot(
@@ -135,6 +225,9 @@ function normalizeContextRoot(
   label: string,
 ): Readonly<Record<string, unknown>> {
   if (mode === 'allow') return context
+  if (mode === 'copy-plain-data-to-null-prototype') {
+    return copyPlainDataRootToNullPrototype(context, label)
+  }
   if (isPlainObjectRecord(context)) return context
   if (!isObjectLike(context)) {
     throw new JSEvalError(`${label} must be a plain object or null-prototype object`)
@@ -209,6 +302,18 @@ function consumeStep(state: EvalState, node: JSExprNode, amount = 1): void {
   state.steps += amount
   if (state.steps > max) {
     throw new JSEvalError(`Maximum evaluation steps (${max}) exceeded`, node)
+  }
+}
+
+function appendIterableValues(
+  target: unknown[],
+  source: unknown,
+  node: JSExprNode,
+  state: EvalState,
+): void {
+  for (const value of source as Iterable<unknown>) {
+    consumeStep(state, node)
+    target.push(value)
   }
 }
 
@@ -349,7 +454,8 @@ export function evalNode(node: JSExprNode, state: EvalState): unknown {
       for (const el of node.elements) {
         consumeStep(state, node)
         if (el === null) result.push(undefined)
-        else if (el.type === 'spread') result.push(...(evalNode(el.argument, state) as any))
+        else if (el.type === 'spread')
+          appendIterableValues(result, evalNode(el.argument, state), el, state)
         else result.push(evalNode(el, state))
       }
       return result
@@ -636,7 +742,7 @@ function evalArgs(args: Array<JSExprNode | JSSpreadNode>, state: EvalState): unk
 
   const result: unknown[] = []
   for (const arg of args) {
-    if (arg.type === 'spread') result.push(...(evalNode(arg.argument, state) as any))
+    if (arg.type === 'spread') appendIterableValues(result, evalNode(arg.argument, state), arg, state)
     else result.push(evalNode(arg, state))
   }
   return result

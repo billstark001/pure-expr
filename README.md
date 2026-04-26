@@ -20,6 +20,7 @@ This package is ESM-only and targets modern runtimes.
 ```ts
 import {
  compile,
+ compileTemplate,
  evaluate,
  renderTemplate,
 } from 'simple-expr';
@@ -35,6 +36,10 @@ const rendered = renderTemplate('Hello {{ user.name }}!', {
  user: { name: 'Ada' },
 });
 // { output: 'Hello Ada!', errors: [] }
+
+const compiledTemplate = compileTemplate('Hello {{ user.name }}!');
+compiledTemplate.render({ user: { name: 'Linus' } });
+// { output: 'Hello Linus!', errors: [] }
 ```
 
 ## Entry Points
@@ -42,7 +47,7 @@ const rendered = renderTemplate('Hello {{ user.name }}!', {
 ```ts
 import { evaluate, compile } from 'simple-expr';
 import { parseExpression, tokenizeExpression } from 'simple-expr/expr';
-import { parseTemplate, renderTemplate } from 'simple-expr/template';
+import { parseTemplate, renderTemplate, compileTemplate } from 'simple-expr/template';
 ```
 
 ## Expression Features
@@ -82,7 +87,7 @@ Useful expression options:
 - maxCallArguments: reject calls above a configured argument count
 - maxTemplateExpressions: reject template literals above a configured placeholder count
 - maxSteps: stop evaluation when the evaluator exceeds a runtime step budget
-- rootContextMode: control root-scope normalization with allow, copy-non-plain-to-null-prototype, or require-plain-object
+- rootContextMode: control root-scope normalization with allow, copy-non-plain-to-null-prototype, require-plain-object, or copy-plain-data-to-null-prototype
 - objectLiteralMode: control object-spread hardening with none, filter-blocked, plain-object-only, or safe
 - isCallableAllowed: customize which functions, methods, and template tags may execute
 - taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
@@ -104,20 +109,24 @@ For custom pipelines you can also use JSLexer, JSExpressionParser, JSEvaluator, 
 
 ## Template Features
 
-The template module parses text with repeated-brace placeholders such as {{ expr }} or {{{{ expr }}}}. Rendering can return plain text or HTML-escaped output.
+The template module parses text with repeated-brace placeholders such as {{ expr }} or {{{{ expr }}}}. Rendering can return plain text or HTML-escaped output, and compileTemplate(...) lets you parse and compile template expressions once for repeated rendering.
+
+Template placeholder closing behaves like a repeated-brace delimiter match, similar to how a <script> tag looks for its closing token. The parser does not partially understand the embedded JavaScript while searching for the end of a placeholder; it simply matches the next run of } characters whose length matches the opening delimiter. If the expression source itself contains that same closing run, you must increase the delimiter length on both sides.
 
 Template parsing also accepts maxSourceLength and maxPlaceholders so oversized templates can be rejected before expression evaluation starts.
 
 ```ts
-import { parseTemplate, renderTemplate } from 'simple-expr/template';
+import { compileTemplate, parseTemplate, renderTemplate } from 'simple-expr/template';
 
 const parsed = parseTemplate('Hi {{ user.name }}');
 const rendered = renderTemplate('Hi {{ user.name }}', {
  user: { name: 'Ada' },
 });
+const compiled = compileTemplate('Hi {{ user.name }}');
+compiled.render({ user: { name: 'Linus' } });
 ```
 
-renderTemplate(...) also accepts evalOptions plus template-level maxSourceLength and maxPlaceholders so the same call policy, budgets, and context/object hardening can be reused for template expressions.
+renderTemplate(...) and compileTemplate(...) both accept evalOptions plus template-level maxSourceLength and maxPlaceholders so the same call policy, budgets, and context/object hardening can be reused for template expressions.
 
 ## Notes And Limits
 
@@ -126,11 +135,15 @@ renderTemplate(...) also accepts evalOptions plus template-level maxSourceLength
 - In practice, ES2015 is a reasonable emit baseline for bundlers and downstream transpilers, but it is not sufficient if you need this package itself to run unchanged on old engines with no bigint or newer built-ins.
 - Expressions are intentionally read-only. Statements and assignment operators are rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
-- Root evaluation contexts must be plain objects or null-prototype objects by default. Use rootContextMode to opt into copying non-plain roots or allowing them unchanged.
+- Root evaluation contexts must be plain objects or null-prototype objects by default. Use rootContextMode to opt into copying non-plain roots, allowing them unchanged, or deep-copying a plain data graph with copy-plain-data-to-null-prototype.
+- copy-plain-data-to-null-prototype rejects accessor properties and circular references anywhere in the root data graph, and it clones plain-object/array data into null-prototype/plain-array containers before evaluation.
+- Getter and Proxy handling still has a platform limitation: JavaScript does not provide a reliable portable Proxy brand check, and reflective inspection may itself trigger Proxy traps while the data graph is being validated/copied. Treat Proxy-backed contexts as unsupported in hardened deployments until a future release offers a stricter strategy.
 - Function calls are not fully sandboxed. The default call policy only permits a conservative subset of standard-library functions and methods; custom or host-provided callables require explicit approval through isCallableAllowed.
 - Object spread filters blocked keys by default. Use objectLiteralMode to opt into legacy behavior, plain-object-only spread, or null-prototype safe object literals.
 - Resource controls such as maxSourceLength, AST budgets, maxSteps, allowCalls, and allowRegexLiterals are opt-in.
+- The runtime step budget now counts elements expanded through array and call spread syntax.
 - Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
+- Template placeholders do not parse embedded JavaScript while searching for their closing delimiter. If the embedded source contains the same closing brace run as the surrounding delimiter, increase the delimiter length on both sides.
 - Dangerous globals and prototype-chain escape hatches are blocked, but user-provided functions still run as provided.
 
 ## Development
@@ -140,7 +153,10 @@ pnpm install
 pnpm run format
 pnpm run lint
 pnpm run bench:expr
+pnpm run bench:template
 pnpm run ci
 ```
 
-The benchmark command compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, and short repeated expressions.
+The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, and short repeated expressions.
+
+The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, and short repeated templates.

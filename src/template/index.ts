@@ -11,7 +11,11 @@ export {
 } from './parser.js'
 
 export {
+  compileTemplate,
   renderTemplate,
+  type CompiledTemplate,
+  type CompiledTemplateRenderOptions,
+  type CompileTemplateOptions,
   type TemplateFormat,
   type RenderTemplateOptions,
   type TemplateRenderResult,

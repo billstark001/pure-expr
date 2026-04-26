@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { allowAllCalls } from '../src/expr/index.js'
-import { parseTemplate, renderTemplate } from '../src/template/index.js'
+import { compileTemplate, parseTemplate, renderTemplate } from '../src/template/index.js'
 
 // #region Template parser coverage
 
@@ -39,6 +39,29 @@ describe('template parser', () => {
       type: 'expression',
       expr: '({ a: 1 }).a',
     })
+  })
+
+  test('supports longer delimiters when the expression contains a shorter closing run', () => {
+    const parsed = parseTemplate('Value: {{{{ "}}" }}}}')
+
+    expect(parsed.errors).toHaveLength(0)
+    expect(parsed.segments[1]).toMatchObject({
+      type: 'expression',
+      expr: '"}}"',
+      delimiterLength: 4,
+    })
+  })
+
+  test('matches the next closing delimiter run without parsing expression syntax', () => {
+    const parsed = parseTemplate('A {{ /* }} */ 1 }} B')
+
+    expect(parsed.errors).toHaveLength(0)
+    expect(parsed.segments[1]).toMatchObject({
+      type: 'expression',
+      expr: '/*',
+      delimiterLength: 2,
+    })
+    expect(parsed.segments[2]).toEqual({ type: 'text', value: ' */ 1 }} B' })
   })
 
   test('reports unclosed expression', () => {
@@ -106,6 +129,35 @@ describe('template renderer', () => {
 
     expect(rendered.errors).toHaveLength(0)
     expect(rendered.output).toBe('Hi ADA')
+  })
+
+  test('compileTemplate supports repeated rendering', () => {
+    const compiled = compileTemplate('Hi {{ name }}')
+
+    expect(compiled.render({ name: 'Ada' }).output).toBe('Hi Ada')
+    expect(compiled.render({ name: 'Linus' }).output).toBe('Hi Linus')
+  })
+
+  test('compileTemplate reuses baked eval options', () => {
+    const compiled = compileTemplate('Hi {{ format(name) }}', {
+      evalOptions: { isCallableAllowed: allowAllCalls },
+    })
+
+    expect(
+      compiled.render({
+        name: 'Ada',
+        format: (value: string) => value.toUpperCase(),
+      }).output,
+    ).toBe('Hi ADA')
+  })
+
+  test('compileTemplate surfaces precomputed parse errors during rendering', () => {
+    const compiled = compileTemplate('A {{ value + }} B')
+    const rendered = compiled.render({ value: 1 })
+
+    expect(rendered.output).toBe('A  B')
+    expect(rendered.errors).toHaveLength(1)
+    expect(rendered.errors[0]?.kind).toBe('parse')
   })
 
   test('applies template parse budgets during rendering', () => {

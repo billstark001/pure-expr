@@ -43,10 +43,6 @@ export interface TemplateParseOptions {
 
 // #region Template parser helpers
 
-function isQuote(ch: string): boolean {
-  return ch === '"' || ch === "'" || ch === '`'
-}
-
 function makeTemplateError(message: string, start: number, end: number): TemplateRenderError {
   return {
     expression: '',
@@ -71,53 +67,7 @@ function readBraceRun(source: string, from: number, brace: '{' | '}'): number {
 }
 
 function findExpressionClose(source: string, from: number, delimiterLength: number): number {
-  let i = from
-  let braceDepth = 0
-  let quote: string | null = null
-
-  while (i < source.length) {
-    const ch = source[i]
-
-    if (quote) {
-      if (ch === '\\') {
-        i += 2
-        continue
-      }
-      if (ch === quote) quote = null
-      i += 1
-      continue
-    }
-
-    if (isQuote(ch)) {
-      quote = ch
-      i += 1
-      continue
-    }
-
-    if (ch === '{') {
-      braceDepth += 1
-      i += 1
-      continue
-    }
-
-    if (ch === '}') {
-      if (braceDepth > 0) {
-        braceDepth -= 1
-        i += 1
-        continue
-      }
-      const run = readBraceRun(source, i, '}')
-      if (run >= delimiterLength) {
-        return i
-      }
-      i += 1
-      continue
-    }
-
-    i += 1
-  }
-
-  return -1
+  return source.indexOf('}'.repeat(delimiterLength), from)
 }
 
 // #endregion
