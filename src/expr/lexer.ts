@@ -1,3 +1,4 @@
+/** Error raised while tokenizing an expression source string. */
 export class JSLexError extends Error {
   constructor(
     message: string,
@@ -24,11 +25,13 @@ export type JSTokenKind =
   | 'template'
   | 'op'
 
+/** One cooked/raw segment inside a template literal token. */
 export interface TemplateQuasi {
   raw: string
   cooked: string | null
 }
 
+/** Token emitted by JSLexer. */
 export interface JSToken {
   kind: JSTokenKind
   raw: string
@@ -53,6 +56,7 @@ function stickyAt<T extends RegExp>(re: T, src: string, pos: number): RegExpExec
   return re.exec(src)
 }
 
+/** Converts expression source text into a token stream. */
 export class JSLexer {
   private pos = 0
 
@@ -231,6 +235,7 @@ export class JSLexer {
   }
 }
 
+/** Convert a raw template fragment into its cooked string representation. */
 export function cookTemplate(raw: string): string | null {
   try {
     return raw

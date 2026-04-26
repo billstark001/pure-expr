@@ -1,5 +1,6 @@
 export type PrattToken = PrattOperatorToken | PrattExprToken
 
+/** Error raised by the generic PrattParser utility. */
 export class PrattParseError extends Error {
   start?: number
   end?: number
@@ -19,6 +20,7 @@ export class PrattParseError extends Error {
   }
 }
 
+/** Operator token consumed by the generic Pratt parser. */
 export interface PrattOperatorToken {
   type: 'opr'
   start?: number
@@ -27,6 +29,7 @@ export interface PrattOperatorToken {
   value: string
 }
 
+/** Value token consumed by the generic Pratt parser. */
 export interface PrattExprToken {
   type: 'expr'
   start?: number
@@ -35,19 +38,21 @@ export interface PrattExprToken {
   value: any
 }
 
+/** AST node returned by the generic Pratt parser. */
 export type PrattASTNode<T = LeafNode> =
   | T
   | PrefixNode<T>
   | PostfixNode<T>
   | BinaryNode<T>
 
+/** Default leaf node shape used by the generic Pratt parser. */
 export interface LeafNode {
   type: 'leaf'
   value: any
 }
 
-function defaultLeafNodeCreator(value: any): LeafNode {
-  return { type: 'leaf', value }
+function defaultLeafNodeCreator(token: PrattExprToken): LeafNode {
+  return { type: 'leaf', value: token.value }
 }
 
 interface OperatorNodeMetadata {
@@ -57,24 +62,29 @@ interface OperatorNodeMetadata {
   place?: string
 }
 
+/** Prefix operator AST node. */
 export interface PrefixNode<T> extends OperatorNodeMetadata {
   type: 'prefix'
   operand: PrattASTNode<T>
 }
 
+/** Postfix operator AST node. */
 export interface PostfixNode<T> extends OperatorNodeMetadata {
   type: 'postfix'
   operand: PrattASTNode<T>
 }
 
+/** Infix operator AST node. */
 export interface BinaryNode<T> extends OperatorNodeMetadata {
   type: 'binary'
   left: PrattASTNode<T>
   right: PrattASTNode<T>
 }
 
+/** Operator associativity. */
 export type Associativity = 'left' | 'right'
 
+/** Pratt operator precedence and position capabilities. */
 export interface OperatorConfig {
   precedence: number
   associativity?: Associativity
@@ -83,18 +93,21 @@ export interface OperatorConfig {
   infix?: boolean
 }
 
+/** Optional semantic validator for a Pratt operator application. */
 export type OperatorValidator<T = LeafNode> = (
   operator: string,
   operands: PrattASTNode<T>[],
   token?: PrattToken
 ) => boolean
 
+/** Configuration for the generic Pratt parser. */
 export interface PrattParserConfig<T = LeafNode> {
   operators: Record<string, OperatorConfig>
   leafNodeCreator?: (token: PrattExprToken) => T
   validators?: Record<string, OperatorValidator<T>>
 }
 
+/** Generic Pratt parser for expression-like token streams. */
 export class PrattParser<T = LeafNode> {
   private readonly operators: ReadonlyMap<string, OperatorConfig>
   private readonly leafNodeCreator: (token: PrattExprToken) => T

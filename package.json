@@ -1,7 +1,7 @@
 {
   "name": "simple-expr",
   "version": "0.1.0",
-  "description": "TODO",
+  "description": "A small ECMAScript expression parser/evaluator and template renderer.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,16 +9,60 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./expr": {
+      "import": "./dist/expr/index.js",
+      "types": "./dist/expr/index.d.ts"
+    },
+    "./template": {
+      "import": "./dist/template/index.js",
+      "types": "./dist/template/index.d.ts"
+    },
+    "./package.json": "./package.json"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "keywords": [
+    "expression",
+    "parser",
+    "evaluator",
+    "template",
+    "esm"
+  ],
+  "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "build": "pnpm run build:js && pnpm run build:types",
+    "build:js": "node ./scripts/build.mjs",
+    "build:types": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "coverage": "vitest run --config vitest.config.ts --coverage",
+    "pack:check": "pnpm pack --dry-run",
+    "ci": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run pack:check",
+    "prepublishOnly": "pnpm run ci"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "esbuild": "^0.28.0",
     "typescript": "^6.0.3",
+    "vite": "^8.0.10",
     "vitest": "^4.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

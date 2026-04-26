@@ -1,5 +1,6 @@
 import { JSExprNode, JSUnaryNode, JSBinaryNode, JSLogicalNode, JSMemberNode, JSIdentifierNode, JSCallNode, JSSpreadNode, JSTemplateNode } from "./node-types.js"
 
+/** Error raised while evaluating an expression AST. */
 export class JSEvalError extends Error {
   constructor(message: string, public readonly node?: JSExprNode) {
     super(message)
@@ -25,12 +26,14 @@ const BLOCKED_GLOBALS = new Set([
   'Proxy', 'Reflect',
 ])
 
+/** Runtime evaluation options for JSEvaluator. */
 export interface JSEvalOptions {
   allowAwait?: boolean
   allowIn?: boolean
   maxCallDepth?: number
 }
 
+/** Evaluates expression AST nodes against a readonly scope object. */
 export class JSEvaluator {
   private callDepth = 0
 

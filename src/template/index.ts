@@ -1,5 +1,6 @@
 export {
   parseTemplate,
+  type TemplateRenderError,
   type TemplateSegment,
   type TemplateParseResult,
   type TemplateExpressionSegment,
@@ -8,6 +9,7 @@ export {
 
 export {
   renderTemplate,
+  type TemplateFormat,
   type RenderTemplateOptions,
   type TemplateRenderResult,
 } from './renderer.js';

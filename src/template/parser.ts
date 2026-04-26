@@ -1,3 +1,4 @@
+/** Error captured while parsing or rendering a template. */
 export interface TemplateRenderError {
   kind: 'template' | 'lex' | 'parse' | 'eval';
   message: string;
@@ -6,6 +7,7 @@ export interface TemplateRenderError {
   end: number;
 }
 
+/** Expression placeholder segment inside a template string. */
 export interface TemplateExpressionSegment {
   type: 'expression';
   expr: string;
@@ -14,13 +16,16 @@ export interface TemplateExpressionSegment {
   delimiterLength: number;
 }
 
+/** Plain-text segment inside a template string. */
 export interface TemplateTextSegment {
   type: 'text';
   value: string;
 }
 
+/** One parsed template segment. */
 export type TemplateSegment = TemplateTextSegment | TemplateExpressionSegment;
 
+/** Parsed template representation. */
 export interface TemplateParseResult {
   segments: TemplateSegment[];
   errors: TemplateRenderError[];
@@ -96,6 +101,7 @@ function findExpressionClose(source: string, from: number, delimiterLength: numb
   return -1;
 }
 
+/** Parse a text template with {{ expr }} style placeholders. */
 export function parseTemplate(source: string): TemplateParseResult {
   const segments: TemplateSegment[] = [];
   const errors: TemplateRenderError[] = [];

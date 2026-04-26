@@ -1,3 +1,4 @@
+/** Literal primitive value node. */
 export interface JSLiteralNode {
   type: 'literal'
   value: null | undefined | boolean | number | bigint | string
@@ -6,6 +7,7 @@ export interface JSLiteralNode {
   end?: number
 }
 
+/** Regular expression literal node. */
 export interface JSRegexNode {
   type: 'regex'
   pattern: string
@@ -15,6 +17,7 @@ export interface JSRegexNode {
   end?: number
 }
 
+/** Identifier lookup node. */
 export interface JSIdentifierNode {
   type: 'identifier'
   name: string
@@ -22,6 +25,7 @@ export interface JSIdentifierNode {
   end?: number
 }
 
+/** Unary operator node. */
 export interface JSUnaryNode {
   type: 'unary'
   operator: string
@@ -30,6 +34,7 @@ export interface JSUnaryNode {
   end?: number
 }
 
+/** Binary operator node. */
 export interface JSBinaryNode {
   type: 'binary'
   operator: string
@@ -39,6 +44,7 @@ export interface JSBinaryNode {
   end?: number
 }
 
+/** Short-circuit logical operator node. */
 export interface JSLogicalNode {
   type: 'logical'
   operator: '&&' | '||' | '??'
@@ -48,6 +54,7 @@ export interface JSLogicalNode {
   end?: number
 }
 
+/** Ternary conditional node. */
 export interface JSConditionalNode {
   type: 'conditional'
   test: JSExprNode
@@ -57,6 +64,7 @@ export interface JSConditionalNode {
   end?: number
 }
 
+/** Property access node. */
 export interface JSMemberNode {
   type: 'member'
   object: JSExprNode
@@ -67,6 +75,7 @@ export interface JSMemberNode {
   end?: number
 }
 
+/** Function or method call node. */
 export interface JSCallNode {
   type: 'call'
   callee: JSExprNode
@@ -76,6 +85,7 @@ export interface JSCallNode {
   end?: number
 }
 
+/** Array literal node. */
 export interface JSArrayNode {
   type: 'array'
   elements: Array<JSExprNode | JSSpreadNode | null>
@@ -83,6 +93,7 @@ export interface JSArrayNode {
   end?: number
 }
 
+/** Object property entry node. */
 export interface JSObjectPropNode {
   type: 'property'
   key: JSExprNode
@@ -93,6 +104,7 @@ export interface JSObjectPropNode {
   end?: number
 }
 
+/** Object literal node. */
 export interface JSObjectNode {
   type: 'object'
   props: Array<JSObjectPropNode | JSSpreadNode>
@@ -100,6 +112,7 @@ export interface JSObjectNode {
   end?: number
 }
 
+/** Spread element or property node. */
 export interface JSSpreadNode {
   type: 'spread'
   argument: JSExprNode
@@ -107,6 +120,7 @@ export interface JSSpreadNode {
   end?: number
 }
 
+/** Template literal node. */
 export interface JSTemplateNode {
   type: 'template'
   tag: JSExprNode | null
@@ -116,6 +130,7 @@ export interface JSTemplateNode {
   end?: number
 }
 
+/** Comma-expression sequence node. */
 export interface JSSequenceNode {
   type: 'sequence'
   expressions: JSExprNode[]
@@ -123,6 +138,7 @@ export interface JSSequenceNode {
   end?: number
 }
 
+/** Pipeline operator node. */
 export interface JSPipelineNode {
   type: 'pipeline'
   left: JSExprNode
@@ -131,6 +147,7 @@ export interface JSPipelineNode {
   end?: number
 }
 
+/** Any AST node produced by the expression parser. */
 export type JSExprNode =
   | JSLiteralNode
   | JSRegexNode

@@ -1,16 +1,17 @@
 import { JSEvalError, JSLexError, JSParseError, evaluate } from '../expr/index.js';
-
-
 import { parseTemplate, TemplateRenderError } from './parser.js';
 
+/** Output encoding mode for renderTemplate. */
 export type TemplateFormat = 'text' | 'html';
 
+/** Rendering controls for template evaluation. */
 export interface RenderTemplateOptions {
   format?: TemplateFormat;
   /** When true, stop on first evaluation error. */
   strict?: boolean;
 }
 
+/** Result returned by renderTemplate. */
 export interface TemplateRenderResult {
   output: string;
   errors: TemplateRenderError[];
@@ -38,6 +39,7 @@ function escapeHtml(raw: string): string {
     .replaceAll("'", '&#39;');
 }
 
+/** Render a template source string against a scope object. */
 export function renderTemplate(
   source: string,
   context: Record<string, unknown>,

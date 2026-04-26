@@ -8,3 +8,14 @@ build
 coverage
 run
 tmp
+*.log
+*.tsbuildinfo
+.pnpm-store
+.cache
+.turbo
+.vite
+.vitest
+.idea
+.env
+.env.*
+/*.local.md

@@ -7,6 +7,7 @@ function parseStringValue(raw: string): string {
   return cookTemplate(raw.slice(1, -1)) ?? raw.slice(1, -1)
 }
 
+/** Error raised while parsing tokens into an expression AST. */
 export class JSParseError extends Error {
   start?: number
   end?: number
@@ -32,6 +33,7 @@ export class JSParseError extends Error {
   }
 }
 
+/** Parser feature flags for the expression grammar. */
 export interface JSParserOptions {
   allowAwait?: boolean
   allowIn?: boolean
@@ -76,6 +78,7 @@ const INFIX_PREC: Record<string, number> = {
 
 const RIGHT_ASSOC = new Set(['**'])
 
+/** Pratt-style parser that converts tokens into expression AST nodes. */
 export class JSExpressionParser {
   private pos = 0
   private readonly src: string
