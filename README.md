@@ -5,7 +5,7 @@ simple-expr is an ESM-first TypeScript library for two related jobs:
 - parsing and evaluating small JavaScript-like expressions against a readonly scope
 - parsing and rendering text templates with {{ expression }} placeholders
 
-It also exports the lower-level lexer, parser, evaluator, AST types, and a generic Pratt parser utility for custom integrations.
+It also exports the lower-level lexer, parser, evaluator and AST types.
 
 ## Install
 
@@ -70,7 +70,7 @@ Useful expression options:
 - allowTaggedTemplates: enable or disable tagged template literals independently
 - taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
 
-For custom pipelines you can also use JSLexer, JSExpressionParser, JSEvaluator, the exported AST node types, and PrattParser.
+For custom pipelines you can also use JSLexer, JSExpressionParser, JSEvaluator, and the exported AST node types.
 
 ## Template Features
 

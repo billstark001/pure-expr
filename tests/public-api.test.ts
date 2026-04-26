@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  PrattParser,
   compile,
   compileExpression,
   parseExpression,
@@ -45,24 +44,4 @@ describe('public API', () => {
     expect(renderTemplate('Hi {{ name }}', { name: 'Ada' }).output).toBe('Hi Ada');
   });
 
-  test('generic pratt parser is exported', () => {
-    const parser = new PrattParser({
-      operators: {
-        '+': { precedence: 10, infix: true },
-      },
-    });
-
-    const ast = parser.parse([
-      { type: 'expr', value: 1 },
-      { type: 'opr', value: '+' },
-      { type: 'expr', value: 2 },
-    ]);
-
-    expect(ast).toMatchObject({
-      type: 'binary',
-      operator: '+',
-      left: { type: 'leaf', value: 1 },
-      right: { type: 'leaf', value: 2 },
-    });
-  });
 });

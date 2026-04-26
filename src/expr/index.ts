@@ -21,22 +21,6 @@ export {
   JSLexError,
   cookTemplate,
 } from "./lexer.js"
-export {
-  PrattParser,
-  PrattParseError,
-  type PrattToken,
-  type PrattOperatorToken,
-  type PrattExprToken,
-  type PrattASTNode,
-  type LeafNode,
-  type PrefixNode,
-  type PostfixNode,
-  type BinaryNode as PrattBinaryNode,
-  type Associativity,
-  type OperatorConfig,
-  type OperatorValidator,
-  type PrattParserConfig,
-} from "./pratt-parser.js"
 
 export type {
   JSExprNode,
@@ -119,7 +103,7 @@ export function evaluate(
 ): unknown {
   const ast = parseExpression(expression, options)
   const evaluator = new JSEvaluator(context, options)
-  return evaluator.eval(ast)
+  return evaluator.evaluate(ast)
 }
 
 /**
