@@ -37,8 +37,16 @@ export class JSParseError extends Error {
 export interface JSParserOptions {
   allowAwait?: boolean
   allowIn?: boolean
+  allowRegexLiterals?: boolean
   allowTemplateLiterals?: boolean
   allowTaggedTemplates?: boolean
+  maxSourceLength?: number
+  maxAstNodes?: number
+  maxAstDepth?: number
+  maxArrayElements?: number
+  maxObjectProperties?: number
+  maxCallArguments?: number
+  maxTemplateExpressions?: number
 }
 
 // Operator precedence table (higher = tighter binding)
@@ -298,6 +306,13 @@ export class JSExpressionParser {
       return { type: 'literal', value: undefined, raw: t.raw, start: t.start, end: t.end }
     }
     if (t.kind === 'regex') {
+      if (this.opts.allowRegexLiterals === false) {
+        throw new JSParseError(
+          'Regular expression literals are not enabled in this context (pass { allowRegexLiterals: true })',
+          t,
+          this.src,
+        )
+      }
       this.advance()
       const lastSlash = t.raw.lastIndexOf('/')
       return { type: 'regex', pattern: t.raw.slice(1, lastSlash), flags: t.raw.slice(lastSlash + 1), raw: t.raw, start: t.start, end: t.end }

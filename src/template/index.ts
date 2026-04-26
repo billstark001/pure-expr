@@ -1,5 +1,6 @@
 export {
   parseTemplate,
+  type TemplateParseOptions,
   type TemplateRenderError,
   type TemplateSegment,
   type TemplateParseResult,

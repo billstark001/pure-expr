@@ -1,9 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { compileExpression, evaluate, EvalOptions, JSEvalError, JSLexError, JSParseError, parseExpression } from "../src/expr/index.js"
+import { allowAllCalls, compileExpression, evaluate, EvalOptions, JSEvalError, JSLexError, JSParseError, parseExpression } from "../src/expr/index.js"
 
 function ev(expr: string, ctx: Record<string, unknown> = {}, opts: EvalOptions = {}): unknown {
   return evaluate(expr, ctx, opts)
 }
+
+const ALLOW_ALL_CALLS: EvalOptions = Object.freeze({
+  isCallableAllowed: allowAllCalls,
+})
 
 describe("evaluator", () => {
   test('integer literal', () => expect(ev('42')).toBe(42));
@@ -84,7 +88,7 @@ describe("evaluator", () => {
   test('tagged template literal', () => {
     const tag = (strings: TemplateStringsArray, ...vals: unknown[]) =>
       strings.raw.join('') + '|' + vals.join(',')
-    expect(ev('tag`a${1}b${2}c`', { tag })).toBe('abc|1,2')
+    expect(ev('tag`a${1}b${2}c`', { tag }, ALLOW_ALL_CALLS)).toBe('abc|1,2')
   });
   test('tagged template literal preserves method receivers', () => {
     expect(ev('obj.tag`x`', {
@@ -94,7 +98,7 @@ describe("evaluator", () => {
           return this.value + strings.length - 1
         },
       },
-    })).toBe(42)
+    }, ALLOW_ALL_CALLS)).toBe(42)
   });
   test('template literal can be disabled', () => {
     expect(() => ev('`hello`', {}, { allowTemplateLiterals: false })).toThrow('not enabled')
@@ -106,7 +110,7 @@ describe("evaluator", () => {
   });
   test('tagged template literal passes a cached spec-like template object by default', () => {
     const seen: TemplateStringsArray[] = []
-    const compiled = compileExpression('tag`a\\nb${value}c`')
+    const compiled = compileExpression('tag`a\\nb${value}c`', ALLOW_ALL_CALLS)
     const tag = (strings: TemplateStringsArray) => {
       seen.push(strings)
       return {
@@ -132,7 +136,7 @@ describe("evaluator", () => {
     expect(second).toEqual(first)
   });
   test('compiled expressions do not leak nested evaluation context', () => {
-    const compiled = compileExpression('fn(value) + value')
+    const compiled = compileExpression('fn(value) + value', ALLOW_ALL_CALLS)
 
     const result = compiled.evaluate({
       value: 1,
@@ -151,7 +155,7 @@ describe("evaluator", () => {
       rawEnumerable: Object.prototype.propertyIsEnumerable.call(strings, 'raw'),
     })
 
-    expect(ev('tag`x`', { tag }, { taggedTemplateArrayMode: 'loose' })).toEqual({
+    expect(ev('tag`x`', { tag }, { ...ALLOW_ALL_CALLS, taggedTemplateArrayMode: 'loose' })).toEqual({
       frozen: false,
       rawFrozen: false,
       rawEnumerable: true,
@@ -162,13 +166,13 @@ describe("evaluator", () => {
   });
   test('tagged template literal preserves raw text and undefined cooked values for invalid escapes', () => {
     const tag = (strings: TemplateStringsArray) => [strings[0], strings.raw[0]]
-    expect(ev('tag`bad \\u{110000}`', { tag })).toEqual([undefined, 'bad \\u{110000}'])
+    expect(ev('tag`bad \\u{110000}`', { tag }, ALLOW_ALL_CALLS)).toEqual([undefined, 'bad \\u{110000}'])
   });
   test('template placeholder expressions handle regex literals, comments, and nested braces', () => {
     expect(ev('`${ /* keep */ /a{2}/.test(text) ? `{${value}}` : "no" }`', {
       text: 'aa',
       value: 'x',
-    })).toBe('{x}')
+    }, ALLOW_ALL_CALLS)).toBe('{x}')
   });
 
   // ── Member access ─────────────────────────────────────────────────
@@ -199,10 +203,10 @@ describe("evaluator", () => {
 
   // ── Function calls ────────────────────────────────────────────────
   test('simple call', () =>
-    expect(ev('double(5)', { double: (x: number) => x * 2 })).toBe(10)
+    expect(ev('double(5)', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10)
   );
   test('method call', () =>
-    expect(ev('obj.greet("world")', { obj: { greet: (s: string) => `Hello, ${s}!` } })).toBe('Hello, world!')
+    expect(ev('obj.greet("world")', { obj: { greet: (s: string) => `Hello, ${s}!` } }, ALLOW_ALL_CALLS)).toBe('Hello, world!')
   );
   test('spread in call args', () =>
     expect(ev('Math.max(...nums)', { Math, nums: [1, 5, 3, 7, 2] })).toBe(7)
@@ -237,10 +241,10 @@ describe("evaluator", () => {
 
   // ── Pipeline operator |> ──────────────────────────────────────────
   test('pipeline basic', () =>
-    expect(ev('5 |> double', { double: (x: number) => x * 2 })).toBe(10)
+    expect(ev('5 |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10)
   );
   test('pipeline chained', () =>
-    expect(ev('5 |> double |> double', { double: (x: number) => x * 2 })).toBe(20)
+    expect(ev('5 |> double |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(20)
   );
   test('pipeline right-assoc: (5 |> (fn |> compose))', () => {
     // right-assoc means 5 |> (double |> triple) which is: (double |> triple)(5)
@@ -248,7 +252,7 @@ describe("evaluator", () => {
     // With right-assoc, 5 |> double |> triple = 5 |> (double |> triple)
     // This composes functions rather than pipes values
     // For clarity, let's just test a simple pipeline
-    expect(ev('10 |> half', { half: (x: number) => x / 2 })).toBe(5)
+    expect(ev('10 |> half', { half: (x: number) => x / 2 }, ALLOW_ALL_CALLS)).toBe(5)
   });
 
   // ── in operator ───────────────────────────────────────────────────
@@ -280,7 +284,7 @@ describe("evaluator", () => {
         seen.push(value)
         return value
       },
-    })).toBe(3)
+    }, ALLOW_ALL_CALLS)).toBe(3)
     expect(seen).toEqual([1, 2, 3])
   });
   test('parseExpression emits sequence nodes for comma expressions', () => {
@@ -313,6 +317,73 @@ describe("evaluator", () => {
   test('blocked property via computed access', () =>
     expect(() => ev('obj["__proto__"]', { obj: {} })).toThrow('not permitted')
   );
+  test('default call policy blocks custom function calls', () => {
+    expect(() => ev('double(5)', { double: (x: number) => x * 2 })).toThrow('not permitted')
+  });
+  test('calls can be disabled entirely with allowCalls=false', () => {
+    expect(() => ev('Math.max(1, 2)', { Math }, { allowCalls: false })).toThrow('not enabled')
+  });
+  test('regex literals can be disabled with allowRegexLiterals=false', () => {
+    expect(() => ev('/abc/', {}, { allowRegexLiterals: false })).toThrow('not enabled')
+  });
+  test('default root context mode rejects non-plain objects', () => {
+    class Scope {
+      count = 2
+    }
+
+    expect(() => evaluate('count', new Scope() as unknown as Record<string, unknown>)).toThrow('plain object')
+  });
+  test('copy-non-plain root context mode preserves own properties only', () => {
+    class Scope {
+      count = 2
+    }
+    ;(Scope.prototype as unknown as Record<string, unknown>).hidden = 99
+
+    expect(
+      evaluate('count', new Scope() as unknown as Record<string, unknown>, {
+        rootContextMode: 'copy-non-plain-to-null-prototype',
+      })
+    ).toBe(2)
+    expect(() =>
+      evaluate('hidden', new Scope() as unknown as Record<string, unknown>, {
+        rootContextMode: 'copy-non-plain-to-null-prototype',
+      })
+    ).toThrow('not defined')
+  });
+  test('default object spread mode filters blocked keys', () => {
+    const payload = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>
+    const result = ev('({ ...payload })', { payload }) as Record<string, unknown>
+
+    expect(result.ok).toBe(1)
+    expect(Object.getPrototypeOf(result)).not.toHaveProperty('polluted')
+  });
+  test('object spread mode none keeps legacy spread behavior', () => {
+    const payload = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>
+    const result = ev('({ ...payload })', { payload }, { objectLiteralMode: 'none' }) as Record<string, unknown>
+
+    expect(Object.getPrototypeOf(result)).toHaveProperty('polluted', true)
+  });
+  test('object spread plain-object-only mode rejects arrays', () => {
+    expect(() => ev('({ ...items })', { items: [1, 2, 3] }, { objectLiteralMode: 'plain-object-only' })).toThrow('plain object')
+  });
+  test('object spread safe mode returns null-prototype objects', () => {
+    const result = ev('({ a: 1 })', {}, { objectLiteralMode: 'safe' }) as Record<string, unknown>
+
+    expect(Object.getPrototypeOf(result)).toBe(null)
+    expect(result.a).toBe(1)
+  });
+  test('max source length rejects oversized expressions', () => {
+    expect(() => parseExpression('count + 1', { maxSourceLength: 5 })).toThrow('maximum source length')
+  });
+  test('max AST nodes rejects oversized trees', () => {
+    expect(() => parseExpression('1 + 2 * 3', { maxAstNodes: 4 })).toThrow('maximum AST node count')
+  });
+  test('max AST depth rejects deep trees', () => {
+    expect(() => parseExpression('a + (b * (c - d))', { maxAstDepth: 3 })).toThrow('maximum AST depth')
+  });
+  test('max steps rejects expensive evaluations', () => {
+    expect(() => ev('1 + 2 + 3', {}, { maxSteps: 4 })).toThrow('Maximum evaluation steps')
+  });
   test('undefined variable throws JSEvalError', () =>
     expect(() => ev('notDefined')).toThrow('not defined')
   );
@@ -397,7 +468,7 @@ describe("evaluator", () => {
 
   // ── Complex real-world template-style expressions ─────────────────
   test('conditional rendering idiom', () =>
-    expect(ev('items.length > 0 ? items.join(", ") : "none"', { items: ['a', 'b', 'c'] })).toBe('a, b, c')
+    expect(ev('items.length > 0 ? items.join(", ") : "none"', { items: ['a', 'b', 'c'] }, ALLOW_ALL_CALLS)).toBe('a, b, c')
   );
   test('safe navigation with fallback', () =>
     expect(ev('user?.profile?.bio ?? "No bio"', { user: { profile: null } })).toBe('No bio')
@@ -406,7 +477,7 @@ describe("evaluator", () => {
     expect(ev('items.map(fn).join(" | ")', {
       items: [1, 2, 3],
       fn: (x: number) => x * x,
-    })).toBe('1 | 4 | 9')
+    }, ALLOW_ALL_CALLS)).toBe('1 | 4 | 9')
   );
   test('object property access and formatting', () =>
     expect(ev('`${user.firstName} ${user.lastName} (${user.age})`', {
@@ -417,7 +488,7 @@ describe("evaluator", () => {
     expect(ev('"  hello  " |> trim |> upper', {
       trim: (s: string) => s.trim(),
       upper: (s: string) => s.toUpperCase(),
-    })).toBe('HELLO')
+    }, ALLOW_ALL_CALLS)).toBe('HELLO')
   );
   test('numeric separator in source', () =>
     expect(ev('1_000_000 + 234_567')).toBe(1234567)

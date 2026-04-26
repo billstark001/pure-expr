@@ -1,14 +1,16 @@
-import { JSEvalError, JSLexError, JSParseError, evaluate } from '../expr/index.js';
-import { parseTemplate, TemplateRenderError } from './parser.js';
+import { EvalOptions, JSEvalError, JSLexError, JSParseError, evaluate } from '../expr/index.js';
+import { parseTemplate, TemplateParseOptions, TemplateRenderError } from './parser.js';
 
 /** Output encoding mode for renderTemplate. */
 export type TemplateFormat = 'text' | 'html';
 
 /** Rendering controls for template evaluation. */
-export interface RenderTemplateOptions {
+export interface RenderTemplateOptions extends TemplateParseOptions {
   format?: TemplateFormat;
   /** When true, stop on first evaluation error. */
   strict?: boolean;
+  /** Expression-evaluation options forwarded to the underlying evaluator. */
+  evalOptions?: EvalOptions;
 }
 
 /** Result returned by renderTemplate. */
@@ -45,7 +47,7 @@ export function renderTemplate(
   context: Record<string, unknown>,
   options: RenderTemplateOptions = {},
 ): TemplateRenderResult {
-  const parsed = parseTemplate(source);
+  const parsed = parseTemplate(source, options);
   const errors = [...parsed.errors];
   const out: string[] = [];
   const isHtml = options.format === 'html';
@@ -57,7 +59,7 @@ export function renderTemplate(
     }
 
     try {
-      const value = evaluate(segment.expr, context);
+      const value = evaluate(segment.expr, context, options.evalOptions);
       const text = toStringValue(value);
       out.push(isHtml ? escapeHtml(text) : text);
     } catch (error) {

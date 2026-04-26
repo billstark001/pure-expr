@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { allowAllCalls } from '../src/expr/index.js';
 import { parseTemplate, renderTemplate } from '../src/template/index.js';
 
 describe('template parser', () => {
@@ -43,6 +44,20 @@ describe('template parser', () => {
     expect(parsed.errors).toHaveLength(1);
     expect(parsed.errors[0]?.kind).toBe('template');
   });
+
+  test('rejects oversized template sources', () => {
+    const parsed = parseTemplate('hello world', { maxSourceLength: 5 });
+
+    expect(parsed.segments).toEqual([]);
+    expect(parsed.errors[0]?.message).toContain('maximum source length');
+  });
+
+  test('rejects templates with too many placeholders', () => {
+    const parsed = parseTemplate('A {{ first }} B {{ second }}', { maxPlaceholders: 1 });
+
+    expect(parsed.segments).toEqual([]);
+    expect(parsed.errors[0]?.message).toContain('maximum placeholder count');
+  });
 });
 
 describe('template renderer', () => {
@@ -69,5 +84,29 @@ describe('template renderer', () => {
     const rendered = renderTemplate('A {{ unknown }} B {{ 1 + 1 }}', {}, { strict: true });
     expect(rendered.errors).toHaveLength(1);
     expect(rendered.output).toBe('A ');
+  });
+
+  test('forwards eval options to expression rendering', () => {
+    const rendered = renderTemplate('Hi {{ format(name) }}', {
+      name: 'Ada',
+      format: (value: string) => value.toUpperCase(),
+    }, {
+      evalOptions: { isCallableAllowed: allowAllCalls },
+    });
+
+    expect(rendered.errors).toHaveLength(0);
+    expect(rendered.output).toBe('Hi ADA');
+  });
+
+  test('applies template parse budgets during rendering', () => {
+    const rendered = renderTemplate('A {{ first }} B {{ second }}', {
+      first: 'x',
+      second: 'y',
+    }, {
+      maxPlaceholders: 1,
+    });
+
+    expect(rendered.output).toBe('');
+    expect(rendered.errors[0]?.message).toContain('maximum placeholder count');
   });
 });

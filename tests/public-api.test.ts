@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  allowAllCalls,
   compile,
   compileExpression,
   JSEvaluator,
@@ -38,6 +39,12 @@ describe('public API', () => {
 
     expect(compiled.source).toBe('count + 2');
     expect(compiled.evaluate({ count: 3 })).toBe(5);
+  });
+
+  test('allowAllCalls is exported from the root entrypoint', () => {
+    const compiled = compileExpression('double(count)', { isCallableAllowed: allowAllCalls });
+
+    expect(compiled.evaluate({ count: 3, double: (value: number) => value * 2 })).toBe(6);
   });
 
   test('JSEvaluator merges base and per-call contexts without leaking overrides', () => {

@@ -31,6 +31,12 @@ export interface TemplateParseResult {
   errors: TemplateRenderError[];
 }
 
+/** Parser-level budget controls for text templates. */
+export interface TemplateParseOptions {
+  maxSourceLength?: number;
+  maxPlaceholders?: number;
+}
+
 function isQuote(ch: string): boolean {
   return ch === '"' || ch === '\'' || ch === '`';
 }
@@ -42,6 +48,13 @@ function makeTemplateError(message: string, start: number, end: number): Templat
     start,
     end,
     kind: 'template',
+  };
+}
+
+function budgetExceeded(message: string, start: number, end: number): TemplateParseResult {
+  return {
+    segments: [],
+    errors: [makeTemplateError(message, start, end)],
   };
 }
 
@@ -102,11 +115,16 @@ function findExpressionClose(source: string, from: number, delimiterLength: numb
 }
 
 /** Parse a text template with {{ expr }} style placeholders. */
-export function parseTemplate(source: string): TemplateParseResult {
+export function parseTemplate(source: string, options: TemplateParseOptions = {}): TemplateParseResult {
+  if (options.maxSourceLength !== undefined && source.length > options.maxSourceLength) {
+    return budgetExceeded(`Template exceeds maximum source length (${options.maxSourceLength})`, 0, source.length);
+  }
+
   const segments: TemplateSegment[] = [];
   const errors: TemplateRenderError[] = [];
   let i = 0;
   let textStart = 0;
+  let placeholderCount = 0;
 
   while (i < source.length) {
     if (source[i] !== '{') {
@@ -118,6 +136,10 @@ export function parseTemplate(source: string): TemplateParseResult {
     if (openLen < 2) {
       i += 1;
       continue;
+    }
+
+    if (options.maxPlaceholders !== undefined && placeholderCount >= options.maxPlaceholders) {
+      return budgetExceeded(`Template exceeds maximum placeholder count (${options.maxPlaceholders})`, i, source.length);
     }
 
     if (i > textStart) {
@@ -140,6 +162,7 @@ export function parseTemplate(source: string): TemplateParseResult {
       end: closePos + openLen,
       delimiterLength: openLen,
     });
+    placeholderCount += 1;
 
     i = closePos + openLen;
     textStart = i;
