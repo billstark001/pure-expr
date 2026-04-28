@@ -53,11 +53,11 @@ export interface JSToken {
 // Sticky regex helpers – each is reset before use
 const RX_TRIVIA = /(?:[ \t\r\n\f\v]+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)+/y
 const RX_NUMBER =
-  /(?:0[xX][\da-fA-F][\da-fA-F_]*|0[oO][0-7_]*|0[bB][01_]*|(?:0|[1-9][\d_]*)(?:\.[\d_]*)?(?:[eE][+\-]?[\d_]+)?|\.[\d_]+(?:[eE][+\-]?[\d_]+)?)n?/y
+  /(?:0[xX][\da-fA-F][\da-fA-F_]*|0[oO][0-7_]*|0[bB][01_]*|(?:0|[1-9][\d_]*)(?:\.[\d_]*)?(?:[eE][+-]?[\d_]+)?|\.[\d_]+(?:[eE][+-]?[\d_]+)?)n?/y
 const RX_STRING = /(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/y
 const RX_IDENT = /[a-zA-Z_$][\w$]*/y
 const RX_OP =
-  /(?:>>>=|\.{3}|===|!==|>>>|<<=|>>=|\+=|-=|\*=|\/=|%=|&=|\|=|\^=|\?\?=|\|\|=|&&=|\*\*=|\+\+|--|==|!=|<=|>=|<<|>>|\*\*|&&|\|\||\?\?|\|>|\?\.|=>|[=+\-*\/%&|^~!<>?:.,()[\]{};])/y
+  /(?:>>>=|\.{3}|===|!==|>>>|<<=|>>=|\+=|-=|\*=|\/=|%=|&=|\|=|\^=|\?\?=|\|\|=|&&=|\*\*=|\+\+|--|==|!=|<=|>=|<<|>>|\*\*|&&|\|\||\?\?|\|>|\?\.|=>|[=+\-*/%&|^~!<>?:.,()[\]{};])/y
 
 const REGEX_CONTEXT_KEYWORDS = new Set([
   'typeof',
@@ -101,7 +101,7 @@ function consumeLineContinuation(raw: string, index: number): number | null {
 export class JSLexer {
   private pos = 0
 
-  constructor(private readonly src: string) {}
+  constructor(private readonly src: string) { }
 
   tokenize(): JSToken[] {
     const tokens: JSToken[] = []

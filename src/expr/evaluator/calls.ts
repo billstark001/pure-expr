@@ -22,10 +22,7 @@ export function appendIterableValues(
 }
 
 export function isPureExprArrowFunction(value: unknown): value is JSCallable {
-  return (
-    typeof value === 'function' &&
-    (value as Record<PropertyKey, unknown>)[PURE_EXPR_ARROW_BRAND] === true
-  )
+  return typeof value === 'function' && Reflect.get(value, PURE_EXPR_ARROW_BRAND) === true
 }
 
 export function ensureCallAllowed(

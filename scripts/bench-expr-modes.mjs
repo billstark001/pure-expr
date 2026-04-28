@@ -11,6 +11,10 @@ const EXPR_CASES = [
     context: { a: 3, b: 5, c: 8, d: 144, e: 3, f: 29, g: 7, h: 4, i: 5 },
     iterations: 120_000,
     expected: 3.6,
+    baseline(context) {
+      const { a, b, c, d, e, f, g, h, i } = context
+      return ((a + b * c - d / e) ** 2 + (f % g) - (h << 1)) / i
+    },
   },
   {
     name: 'member-access-heavy',
@@ -32,6 +36,14 @@ const EXPR_CASES = [
     },
     iterations: 120_000,
     expected: 60,
+    baseline(context) {
+      return (
+        context.user.profile.metrics.primary.current +
+        context.user.profile.metrics.secondary.current +
+        context.account.plan.name.length +
+        context.account.flags.beta.value
+      )
+    },
   },
   {
     name: 'call-heavy',
@@ -49,6 +61,10 @@ const EXPR_CASES = [
     },
     iterations: 100_000,
     expected: 43,
+    baseline(context) {
+      const { a, b, c, d, double, scale, sum, lookup, math } = context
+      return sum(double(a), scale(b), math.max(c, d), lookup('key'))
+    },
   },
   {
     name: 'template-literal-heavy',
@@ -63,6 +79,10 @@ const EXPR_CASES = [
     },
     iterations: 90_000,
     expected: 'user:Ada|count:12|total:19.50|first:starter',
+    baseline(context) {
+      const { user, stats, total, items, format } = context
+      return `user:${user.name}|count:${stats.count}|total:${format(total)}|first:${items[0]?.label ?? 'none'}`
+    },
   },
   {
     name: 'short-repeated',
@@ -70,6 +90,9 @@ const EXPR_CASES = [
     context: { count: 41 },
     iterations: 300_000,
     expected: 42,
+    baseline(context) {
+      return context.count + 1
+    },
   },
   {
     name: 'hack-pipe-transform',
@@ -82,6 +105,10 @@ const EXPR_CASES = [
     },
     iterations: 90_000,
     expected: 'ADA!',
+    baseline(context) {
+      const { marker, trim, upper, suffix } = context
+      return suffix(upper(trim('  ada  ')), marker)
+    },
   },
   {
     name: 'hack-pipe-nested-topic',
@@ -96,6 +123,10 @@ const EXPR_CASES = [
     },
     iterations: 80_000,
     expected: 13,
+    baseline(context) {
+      const { input, bonus, prefix, suffix, double, wrap } = context
+      return double(input + bonus) + wrap(input, prefix, suffix).length
+    },
   },
 ]
 
@@ -108,6 +139,10 @@ const ARROW_BACKEND_CASES = [
     callIterations: 500_000,
     invokeArgs: [2],
     expected: 5,
+    baselineFactory(context) {
+      const { bonus } = context
+      return (value) => value + bonus
+    },
   },
   {
     name: 'defaults-rest-destructure',
@@ -117,6 +152,10 @@ const ARROW_BACKEND_CASES = [
     callIterations: 280_000,
     invokeArgs: [{ value: 1 }, 'x', 'y'],
     expected: 9,
+    baselineFactory(context) {
+      const { bias, extra } = context
+      return ({ value, step = bias }, ...rest) => value + step + rest.length + extra
+    },
   },
   {
     name: 'pipe-topic-capture',
@@ -126,6 +165,10 @@ const ARROW_BACKEND_CASES = [
     callIterations: 360_000,
     invokeArgs: [],
     expected: 7,
+    baselineFactory(context) {
+      const { bonus } = context
+      return () => 2 + bonus
+    },
   },
 ]
 
@@ -185,6 +228,13 @@ function formatMilliseconds(value) {
   })
 }
 
+function formatRatio(value) {
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: value < 0.1 ? 4 : 2,
+    maximumFractionDigits: value < 0.1 ? 4 : 2,
+  })
+}
+
 function pad(value, width) {
   return String(value).padEnd(width, ' ')
 }
@@ -226,12 +276,13 @@ function printTable(title, headers, rows) {
 const exprRows = []
 
 for (const benchmarkCase of EXPR_CASES) {
-  const { name, expression, context, iterations, expected } = benchmarkCase
+  const { name, expression, context, iterations, expected, baseline } = benchmarkCase
   const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO))
   const compileIterations = Math.max(2_000, Math.floor(iterations / 60))
 
   const compiled = compile(expression, BENCH_EVAL_OPTIONS)
 
+  warmup(() => baseline(context), warmupIterations)
   warmup(() => evaluate(expression, context, BENCH_EVAL_OPTIONS), warmupIterations)
   warmup(() => compiled.evaluate(context), warmupIterations)
   warmup(
@@ -239,19 +290,23 @@ for (const benchmarkCase of EXPR_CASES) {
     Math.min(compileIterations, warmupIterations),
   )
 
+  const nativeRun = measure(iterations, () => baseline(context))
   const direct = measure(iterations, () => evaluate(expression, context, BENCH_EVAL_OPTIONS))
   const compiledRun = measure(iterations, () => compiled.evaluate(context))
   const compileOnly = measure(compileIterations, () => compile(expression, BENCH_EVAL_OPTIONS))
 
+  assertExpected(name, 'native baseline', nativeRun.lastResult, expected)
   assertExpected(name, DIRECT_LABEL, direct.lastResult, expected)
   assertExpected(name, COMPILED_LABEL, compiledRun.lastResult, expected)
 
   exprRows.push({
     name,
     iterations,
+    nativeOps: nativeRun.opsPerSecond,
     directOps: direct.opsPerSecond,
     compiledOps: compiledRun.opsPerSecond,
-    speedup: compiledRun.opsPerSecond / direct.opsPerSecond,
+    directVsNative: direct.opsPerSecond / nativeRun.opsPerSecond,
+    compiledVsNative: compiledRun.opsPerSecond / nativeRun.opsPerSecond,
     compileMs: compileOnly.elapsedMs / compileIterations,
   })
 }
@@ -259,9 +314,31 @@ for (const benchmarkCase of EXPR_CASES) {
 const arrowRows = []
 
 for (const benchmarkCase of ARROW_BACKEND_CASES) {
-  const { name, expression, context, createIterations, callIterations, invokeArgs, expected } =
-    benchmarkCase
-  const defaultStats = { createOps: 0, callOps: 0 }
+  const {
+    name,
+    expression,
+    context,
+    createIterations,
+    callIterations,
+    invokeArgs,
+    expected,
+    baselineFactory,
+  } = benchmarkCase
+  const warmupCreateIterations = Math.max(1_000, Math.floor(createIterations * WARMUP_RATIO))
+  const warmupCallIterations = Math.max(1_000, Math.floor(callIterations * WARMUP_RATIO))
+
+  warmup(() => baselineFactory(context), warmupCreateIterations)
+
+  const baselineCreated = baselineFactory(context)
+  assertFunctionResult(name, 'native create', baselineCreated, invokeArgs, expected)
+
+  warmup(() => baselineCreated(...invokeArgs), warmupCallIterations)
+
+  const nativeCreateRun = measure(createIterations, () => baselineFactory(context))
+  const nativeInvokeRun = measure(callIterations, () => baselineCreated(...invokeArgs))
+
+  assertFunctionResult(name, 'native create', nativeCreateRun.lastResult, invokeArgs, expected)
+  assertExpected(name, 'native invoke', nativeInvokeRun.lastResult, expected)
 
   for (const functionMode of FUNCTION_MODES) {
     const options = {
@@ -269,8 +346,6 @@ for (const benchmarkCase of ARROW_BACKEND_CASES) {
       functionMode,
     }
     const compiled = compile(expression, options)
-    const warmupCreateIterations = Math.max(1_000, Math.floor(createIterations * WARMUP_RATIO))
-    const warmupCallIterations = Math.max(1_000, Math.floor(callIterations * WARMUP_RATIO))
 
     warmup(() => compiled.evaluate(context), warmupCreateIterations)
 
@@ -285,19 +360,15 @@ for (const benchmarkCase of ARROW_BACKEND_CASES) {
     assertFunctionResult(name, `${functionMode} create`, createRun.lastResult, invokeArgs, expected)
     assertExpected(name, `${functionMode} invoke`, invokeRun.lastResult, expected)
 
-    if (functionMode === 'default') {
-      defaultStats.createOps = createRun.opsPerSecond
-      defaultStats.callOps = invokeRun.opsPerSecond
-    }
-
     arrowRows.push({
       name,
       functionMode,
+      nativeCreateOps: nativeCreateRun.opsPerSecond,
+      nativeInvokeOps: nativeInvokeRun.opsPerSecond,
       createOps: createRun.opsPerSecond,
       callOps: invokeRun.opsPerSecond,
-      createSpeedup:
-        functionMode === 'default' ? 1 : createRun.opsPerSecond / defaultStats.createOps,
-      callSpeedup: functionMode === 'default' ? 1 : invokeRun.opsPerSecond / defaultStats.callOps,
+      createVsNative: createRun.opsPerSecond / nativeCreateRun.opsPerSecond,
+      callVsNative: invokeRun.opsPerSecond / nativeInvokeRun.opsPerSecond,
     })
   }
 }
@@ -305,14 +376,17 @@ for (const benchmarkCase of ARROW_BACKEND_CASES) {
 console.log('expr mode benchmark')
 console.log(`node ${process.version}`)
 console.log(`median of ${SAMPLE_COUNT} samples per measurement`)
+console.log('native V8 baseline is 1.00x')
 console.log('')
 
 const exprHeaders = [
   pad('case', CASE_NAME_WIDTH),
   pad('iterations', 12),
+  pad('native ops/s', 16),
   pad('direct ops/s', 16),
   pad('compiled ops/s', 18),
-  pad('speedup', 10),
+  pad('direct vs v8', 14),
+  pad('compiled vs v8', 16),
   pad('avg compile ms', 16),
 ]
 
@@ -322,9 +396,11 @@ printTable(
   exprRows.map((row) => [
     pad(row.name, CASE_NAME_WIDTH),
     pad(row.iterations.toLocaleString('en-US'), 12),
+    pad(formatOps(row.nativeOps), 16),
     pad(formatOps(row.directOps), 16),
     pad(formatOps(row.compiledOps), 18),
-    pad(`${row.speedup.toFixed(2)}x`, 10),
+    pad(`${formatRatio(row.directVsNative)}x`, 14),
+    pad(`${formatRatio(row.compiledVsNative)}x`, 16),
     pad(formatMilliseconds(row.compileMs), 16),
   ]),
 )
@@ -332,10 +408,12 @@ printTable(
 const arrowHeaders = [
   pad('case', CASE_NAME_WIDTH),
   pad('backend', 14),
+  pad('native create', 16),
   pad('create ops/s', 16),
+  pad('create vs v8', 16),
+  pad('native invoke', 16),
   pad('invoke ops/s', 16),
-  pad('create vs default', 18),
-  pad('invoke vs default', 18),
+  pad('invoke vs v8', 16),
 ]
 
 printTable(
@@ -344,10 +422,12 @@ printTable(
   arrowRows.map((row) => [
     pad(row.name, CASE_NAME_WIDTH),
     pad(row.functionMode, 14),
+    pad(formatOps(row.nativeCreateOps), 16),
     pad(formatOps(row.createOps), 16),
+    pad(`${formatRatio(row.createVsNative)}x`, 16),
+    pad(formatOps(row.nativeInvokeOps), 16),
     pad(formatOps(row.callOps), 16),
-    pad(`${row.createSpeedup.toFixed(2)}x`, 18),
-    pad(`${row.callSpeedup.toFixed(2)}x`, 18),
+    pad(`${formatRatio(row.callVsNative)}x`, 16),
   ]),
 )
 

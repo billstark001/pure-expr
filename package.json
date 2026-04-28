@@ -1,6 +1,6 @@
 {
   "name": "pure-expr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A small ECMAScript expression parser/evaluator and template renderer.",
   "type": "module",
   "main": "./dist/cjs/index.cjs",
@@ -43,6 +43,7 @@
   },
   "files": [
     "dist",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],

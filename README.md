@@ -42,6 +42,18 @@ compiledTemplate.render({ user: { name: 'Linus' } });
 // { output: 'Hello Linus!', errors: [] }
 ```
 
+## Expected Use Cases
+
+pure-expr is a good fit when you want a small user-editable expression or templating layer without exposing full JavaScript execution.
+
+- Server-side rule and configuration evaluation, such as pricing formulas, feature flags, routing rules, or workflow conditions stored in JSON, YAML, or database records.
+- Frontend computed configuration, such as dashboard formulas, conditional UI labels, visibility rules, or low-code style view-model expressions authored outside the application bundle.
+- Reusable text generation on the server, such as email bodies, notification payloads, document fragments, and other business templates with `{{ expression }}` placeholders.
+- CMS or admin-authored content snippets where non-developers need limited interpolation, formatting helpers, or simple conditional logic without giving them arbitrary code execution.
+- Repeated evaluation paths where you parse once and run many times via `compile(...)` or `compileTemplate(...)`, for example in batch jobs, rendering pipelines, or request-time personalization.
+
+It is not a fit for general-purpose plugin execution or sandboxing untrusted JavaScript programs. The package intentionally supports a restricted expression language and a permission-gated call model instead.
+
 ## Entry Points
 
 ```ts
