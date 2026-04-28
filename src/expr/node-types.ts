@@ -27,6 +27,75 @@ export interface JSIdentifierNode {
   end?: number
 }
 
+/** Hack-pipe topic reference node. */
+export interface JSTopicReferenceNode {
+  type: 'topic'
+  start?: number
+  end?: number
+}
+
+/** Binding identifier used in arrow parameters and destructuring patterns. */
+export interface JSBindingIdentifierNode {
+  type: 'binding-identifier'
+  name: string
+  start?: number
+  end?: number
+}
+
+/** Binding node with a default initializer. */
+export interface JSBindingAssignmentNode {
+  type: 'binding-assignment'
+  left: JSBindingNode
+  defaultValue: JSExprNode
+  start?: number
+  end?: number
+}
+
+/** Array binding pattern node. */
+export interface JSBindingArrayNode {
+  type: 'binding-array'
+  elements: Array<JSBindingNode | null>
+  rest: JSBindingNode | null
+  start?: number
+  end?: number
+}
+
+/** One object binding property entry. */
+export interface JSBindingPropertyNode {
+  type: 'binding-property'
+  key: JSExprNode
+  value: JSBindingNode
+  computed: boolean
+  shorthand: boolean
+  start?: number
+  end?: number
+}
+
+/** Object binding pattern node. */
+export interface JSBindingObjectNode {
+  type: 'binding-object'
+  properties: JSBindingPropertyNode[]
+  rest: JSBindingIdentifierNode | null
+  start?: number
+  end?: number
+}
+
+/** Any binding node accepted in arrow parameters. */
+export type JSBindingNode =
+  | JSBindingIdentifierNode
+  | JSBindingAssignmentNode
+  | JSBindingArrayNode
+  | JSBindingObjectNode
+
+/** One formal arrow parameter. */
+export interface JSArrowParameterNode {
+  type: 'parameter'
+  binding: JSBindingNode
+  rest: boolean
+  start?: number
+  end?: number
+}
+
 /** Unary operator node. */
 export interface JSUnaryNode {
   type: 'unary'
@@ -149,6 +218,15 @@ export interface JSPipelineNode {
   end?: number
 }
 
+/** Concise-body arrow function node. */
+export interface JSArrowFunctionNode {
+  type: 'arrow-function'
+  params: JSArrowParameterNode[]
+  body: JSExprNode
+  start?: number
+  end?: number
+}
+
 // #endregion
 
 // #region AST union
@@ -158,6 +236,8 @@ export type JSExprNode =
   | JSLiteralNode
   | JSRegexNode
   | JSIdentifierNode
+  | JSTopicReferenceNode
+  | JSArrowFunctionNode
   | JSUnaryNode
   | JSBinaryNode
   | JSLogicalNode

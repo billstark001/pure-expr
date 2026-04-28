@@ -1,6 +1,6 @@
 import { type JSEvalOptions, JSEvaluator } from './evaluator.js'
 import { JSLexer, type JSToken } from './lexer.js'
-import type { JSExprNode } from './node-types.js'
+import type { JSBindingNode, JSExprNode } from './node-types.js'
 import { type JSParserOptions, JSExpressionParser, JSParseError } from './parser.js'
 
 // #region Shared public types
@@ -16,6 +16,7 @@ export { defaultCallPermissionPolicy } from './call-permission.js'
 export { JSExpressionParser, type JSParserOptions, JSParseError } from './parser.js'
 export {
   allowAllCalls,
+  type FunctionMode,
   JSEvaluator,
   type JSCallKind,
   type JSCallPermissionContext,
@@ -40,6 +41,15 @@ export type {
   JSLiteralNode,
   JSRegexNode,
   JSIdentifierNode,
+  JSTopicReferenceNode,
+  JSBindingNode,
+  JSBindingIdentifierNode,
+  JSBindingAssignmentNode,
+  JSBindingArrayNode,
+  JSBindingPropertyNode,
+  JSBindingObjectNode,
+  JSArrowParameterNode,
+  JSArrowFunctionNode,
   JSUnaryNode,
   JSMemberNode,
   JSCallNode,
@@ -88,7 +98,7 @@ function validateSourceLength(
 function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
   let nodeCount = 0
 
-  const visit = (node: JSExprNode, depth: number): void => {
+  const bumpBudget = (depth: number): void => {
     nodeCount += 1
 
     if (options.maxAstNodes !== undefined && nodeCount > options.maxAstNodes) {
@@ -97,11 +107,54 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
     if (options.maxAstDepth !== undefined && depth > options.maxAstDepth) {
       throw new JSParseError(`Expression exceeds maximum AST depth (${options.maxAstDepth})`)
     }
+  }
+
+  const visitBinding = (binding: JSBindingNode, depth: number): void => {
+    bumpBudget(depth)
+
+    switch (binding.type) {
+      case 'binding-identifier':
+        return
+
+      case 'binding-assignment':
+        visitBinding(binding.left, depth + 1)
+        visit(binding.defaultValue, depth + 1)
+        return
+
+      case 'binding-array':
+        for (const element of binding.elements) {
+          if (element !== null) visitBinding(element, depth + 1)
+        }
+        if (binding.rest) visitBinding(binding.rest, depth + 1)
+        return
+
+      case 'binding-object':
+        for (const prop of binding.properties) {
+          bumpBudget(depth + 1)
+          if (prop.computed) visit(prop.key, depth + 2)
+          visitBinding(prop.value, depth + 2)
+        }
+        if (binding.rest) visitBinding(binding.rest, depth + 1)
+        return
+    }
+  }
+
+  const visit = (node: JSExprNode, depth: number): void => {
+    bumpBudget(depth)
 
     switch (node.type) {
       case 'literal':
       case 'regex':
       case 'identifier':
+      case 'topic':
+        return
+
+      case 'arrow-function':
+        for (const param of node.params) {
+          bumpBudget(depth + 1)
+          visitBinding(param.binding, depth + 2)
+        }
+        visit(node.body, depth + 1)
         return
 
       case 'unary':

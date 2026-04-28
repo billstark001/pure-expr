@@ -4,7 +4,7 @@ import { allowAllCalls, compile, evaluate } from '../dist/esm/index.js'
 
 // #region Benchmark cases
 
-const CASES = [
+const EXPR_CASES = [
   {
     name: 'arithmetic-heavy',
     expression: '((a + b * c - d / e) ** 2 + (f % g) - (h << 1)) / i',
@@ -71,12 +71,71 @@ const CASES = [
     iterations: 300_000,
     expected: 42,
   },
+  {
+    name: 'hack-pipe-transform',
+    expression: '"  ada  " |> trim(%) |> upper(%) |> suffix(%, marker)',
+    context: {
+      marker: '!',
+      trim: (value) => value.trim(),
+      upper: (value) => value.toUpperCase(),
+      suffix: (value, markerValue) => `${value}${markerValue}`,
+    },
+    iterations: 90_000,
+    expected: 'ADA!',
+  },
+  {
+    name: 'hack-pipe-nested-topic',
+    expression: 'input |> ((% + bonus |> double(%)) + (% |> wrap(%, prefix, suffix)).length)',
+    context: {
+      input: 4,
+      bonus: 1,
+      prefix: '<',
+      suffix: '>',
+      double: (value) => value * 2,
+      wrap: (value, left, right) => `${left}${value}${right}`,
+    },
+    iterations: 80_000,
+    expected: 13,
+  },
 ]
+
+const ARROW_BACKEND_CASES = [
+  {
+    name: 'simple-closure',
+    expression: '(value => value + bonus)',
+    context: { bonus: 3 },
+    createIterations: 220_000,
+    callIterations: 500_000,
+    invokeArgs: [2],
+    expected: 5,
+  },
+  {
+    name: 'defaults-rest-destructure',
+    expression: '(({ value, step = bias }, ...rest) => value + step + rest.length + extra)',
+    context: { bias: 2, extra: 4 },
+    createIterations: 130_000,
+    callIterations: 280_000,
+    invokeArgs: [{ value: 1 }, 'x', 'y'],
+    expected: 9,
+  },
+  {
+    name: 'pipe-topic-capture',
+    expression: '2 |> (() => % + bonus)',
+    context: { bonus: 5 },
+    createIterations: 150_000,
+    callIterations: 360_000,
+    invokeArgs: [],
+    expected: 7,
+  },
+]
+
+const FUNCTION_MODES = ['default', 'performance']
 
 const DIRECT_LABEL = 'direct evaluate'
 const COMPILED_LABEL = 'compiled evaluate'
 const WARMUP_RATIO = 0.05
 const SAMPLE_COUNT = 5
+const CASE_NAME_WIDTH = 28
 const BENCH_EVAL_OPTIONS = Object.freeze({
   isCallableAllowed: allowAllCalls,
 })
@@ -138,13 +197,35 @@ function assertExpected(caseName, label, actual, expected) {
   }
 }
 
+function assertFunctionResult(caseName, label, candidate, invokeArgs, expected) {
+  if (typeof candidate !== 'function') {
+    throw new Error(`${caseName}: ${label} did not produce a function`)
+  }
+
+  const actual = candidate(...invokeArgs)
+  assertExpected(caseName, `${label} invocation`, actual, expected)
+}
+
+function printTable(title, headers, rows) {
+  console.log(title)
+  console.log('')
+  console.log(headers.join(''))
+  console.log('-'.repeat(headers.join('').length))
+
+  for (const row of rows) {
+    console.log(row.join(''))
+  }
+
+  console.log('')
+}
+
 // #endregion
 
 // #region Benchmark execution
 
-const rows = []
+const exprRows = []
 
-for (const benchmarkCase of CASES) {
+for (const benchmarkCase of EXPR_CASES) {
   const { name, expression, context, iterations, expected } = benchmarkCase
   const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO))
   const compileIterations = Math.max(2_000, Math.floor(iterations / 60))
@@ -165,7 +246,7 @@ for (const benchmarkCase of CASES) {
   assertExpected(name, DIRECT_LABEL, direct.lastResult, expected)
   assertExpected(name, COMPILED_LABEL, compiledRun.lastResult, expected)
 
-  rows.push({
+  exprRows.push({
     name,
     iterations,
     directOps: direct.opsPerSecond,
@@ -175,13 +256,59 @@ for (const benchmarkCase of CASES) {
   })
 }
 
+const arrowRows = []
+
+for (const benchmarkCase of ARROW_BACKEND_CASES) {
+  const { name, expression, context, createIterations, callIterations, invokeArgs, expected } =
+    benchmarkCase
+  const defaultStats = { createOps: 0, callOps: 0 }
+
+  for (const functionMode of FUNCTION_MODES) {
+    const options = {
+      ...BENCH_EVAL_OPTIONS,
+      functionMode,
+    }
+    const compiled = compile(expression, options)
+    const warmupCreateIterations = Math.max(1_000, Math.floor(createIterations * WARMUP_RATIO))
+    const warmupCallIterations = Math.max(1_000, Math.floor(callIterations * WARMUP_RATIO))
+
+    warmup(() => compiled.evaluate(context), warmupCreateIterations)
+
+    const created = compiled.evaluate(context)
+    assertFunctionResult(name, `${functionMode} create`, created, invokeArgs, expected)
+
+    warmup(() => created(...invokeArgs), warmupCallIterations)
+
+    const createRun = measure(createIterations, () => compiled.evaluate(context))
+    const invokeRun = measure(callIterations, () => created(...invokeArgs))
+
+    assertFunctionResult(name, `${functionMode} create`, createRun.lastResult, invokeArgs, expected)
+    assertExpected(name, `${functionMode} invoke`, invokeRun.lastResult, expected)
+
+    if (functionMode === 'default') {
+      defaultStats.createOps = createRun.opsPerSecond
+      defaultStats.callOps = invokeRun.opsPerSecond
+    }
+
+    arrowRows.push({
+      name,
+      functionMode,
+      createOps: createRun.opsPerSecond,
+      callOps: invokeRun.opsPerSecond,
+      createSpeedup:
+        functionMode === 'default' ? 1 : createRun.opsPerSecond / defaultStats.createOps,
+      callSpeedup: functionMode === 'default' ? 1 : invokeRun.opsPerSecond / defaultStats.callOps,
+    })
+  }
+}
+
 console.log('expr mode benchmark')
 console.log(`node ${process.version}`)
 console.log(`median of ${SAMPLE_COUNT} samples per measurement`)
 console.log('')
 
-const headers = [
-  pad('case', 24),
+const exprHeaders = [
+  pad('case', CASE_NAME_WIDTH),
   pad('iterations', 12),
   pad('direct ops/s', 16),
   pad('compiled ops/s', 18),
@@ -189,20 +316,39 @@ const headers = [
   pad('avg compile ms', 16),
 ]
 
-console.log(headers.join(''))
-console.log('-'.repeat(headers.join('').length))
+printTable(
+  'direct vs compiled expressions',
+  exprHeaders,
+  exprRows.map((row) => [
+    pad(row.name, CASE_NAME_WIDTH),
+    pad(row.iterations.toLocaleString('en-US'), 12),
+    pad(formatOps(row.directOps), 16),
+    pad(formatOps(row.compiledOps), 18),
+    pad(`${row.speedup.toFixed(2)}x`, 10),
+    pad(formatMilliseconds(row.compileMs), 16),
+  ]),
+)
 
-for (const row of rows) {
-  console.log(
-    [
-      pad(row.name, 24),
-      pad(row.iterations.toLocaleString('en-US'), 12),
-      pad(formatOps(row.directOps), 16),
-      pad(formatOps(row.compiledOps), 18),
-      pad(`${row.speedup.toFixed(2)}x`, 10),
-      pad(formatMilliseconds(row.compileMs), 16),
-    ].join(''),
-  )
-}
+const arrowHeaders = [
+  pad('case', CASE_NAME_WIDTH),
+  pad('backend', 14),
+  pad('create ops/s', 16),
+  pad('invoke ops/s', 16),
+  pad('create vs default', 18),
+  pad('invoke vs default', 18),
+]
+
+printTable(
+  'arrow backend runtime (compiled expressions)',
+  arrowHeaders,
+  arrowRows.map((row) => [
+    pad(row.name, CASE_NAME_WIDTH),
+    pad(row.functionMode, 14),
+    pad(formatOps(row.createOps), 16),
+    pad(formatOps(row.callOps), 16),
+    pad(`${row.createSpeedup.toFixed(2)}x`, 18),
+    pad(`${row.callSpeedup.toFixed(2)}x`, 18),
+  ]),
+)
 
 // #endregion

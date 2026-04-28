@@ -267,16 +267,109 @@ describe('evaluator', () => {
 
   // ── Pipeline operator |> ──────────────────────────────────────────
   test('pipeline basic', () =>
-    expect(ev('5 |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10))
+    expect(ev('5 |> double(%)', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(10))
   test('pipeline chained', () =>
-    expect(ev('5 |> double |> double', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS)).toBe(20))
-  test('pipeline right-assoc: (5 |> (fn |> compose))', () => {
-    // right-assoc means 5 |> (double |> triple) which is: (double |> triple)(5)
-    // But in Hack-style |>, we want left-to-right piping
-    // With right-assoc, 5 |> double |> triple = 5 |> (double |> triple)
-    // This composes functions rather than pipes values
-    // For clarity, let's just test a simple pipeline
-    expect(ev('10 |> half', { half: (x: number) => x / 2 }, ALLOW_ALL_CALLS)).toBe(5)
+    expect(
+      ev('5 |> double(%) |> double(%)', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS),
+    ).toBe(20))
+  test('pipeline topic can appear in arbitrary expression positions', () => {
+    expect(
+      ev('5 |> [%, % + 1, double(%)]', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS),
+    ).toEqual([5, 6, 10])
+  })
+  test('pipeline creates nested topic scopes', () => {
+    expect(
+      ev('2 |> (% + 1 |> double(%)) + %', { double: (x: number) => x * 2 }, ALLOW_ALL_CALLS),
+    ).toBe(8)
+  })
+  test('topic reference is rejected outside a pipeline body', () => {
+    expect(() => parseExpression('% + 1')).toThrow('only allowed inside a pipeline body')
+  })
+  test('pipeline body must reference the topic', () => {
+    expect(() => parseExpression('5 |> double')).toThrow("must reference '%' at least once")
+  })
+  test('conditional branches can contain hack pipes with assignment-level precedence', () => {
+    expect(
+      ev(
+        'flag ? 1 : 2 |> double(%)',
+        { flag: false, double: (x: number) => x * 2 },
+        ALLOW_ALL_CALLS,
+      ),
+    ).toBe(4)
+  })
+  test('pipeline body rejects unparenthesized conditional expressions', () => {
+    expect(() => parseExpression('5 |> flag ? % : 0')).toThrow(
+      'Hack pipe body cannot be an unparenthesized conditional expression',
+    )
+  })
+  test('modulo operator remains available outside topic position', () => {
+    expect(ev('20 % 6')).toBe(2)
+  })
+
+  // ── Arrow functions ──────────────────────────────────────────────
+  test('simple concise arrow can be created and called', () => {
+    expect(ev('(x => x + 1)(2)')).toBe(3)
+  })
+  test('empty-parameter arrow works', () => {
+    expect(ev('(() => 1)()')).toBe(1)
+  })
+  test('arrow default parameters evaluate left to right', () => {
+    expect(ev('((x, y = x + 1) => y)(2)')).toBe(3)
+  })
+  test('arrow default parameters preserve TDZ-like self references', () => {
+    expect(() => ev('((x = x) => x)()')).toThrow('before initialization')
+  })
+  test('arrow rest parameters collect trailing arguments', () => {
+    expect(ev('((head, ...rest) => rest[1])(1, 2, 3, 4)')).toBe(3)
+  })
+  test('arrow array destructuring works', () => {
+    expect(ev('(([first, ...rest]) => rest[0])([1, 2, 3])')).toBe(2)
+  })
+  test('arrow object destructuring with defaults and rest works', () => {
+    expect(
+      ev(
+        "(({ name, count = 1, ...rest }) => `${name}:${count}:${rest.extra}`)({ name: 'Ada', extra: 4 })",
+      ),
+    ).toBe('Ada:1:4')
+  })
+  test('arrow closures capture outer scope', () => {
+    expect(ev('((x) => (() => x + bonus))(2)()', { bonus: 3 })).toBe(5)
+  })
+  test('arrow closures capture outer pipe topics', () => {
+    expect(ev('2 |> (() => % + 1)()')).toBe(3)
+  })
+  test('allowCalls=false blocks arrow invocation', () => {
+    expect(() => ev('(x => x)(1)', {}, { allowCalls: false })).toThrow('not enabled')
+  })
+  test('arrow functions can be disabled explicitly', () => {
+    expect(() => parseExpression('x => x', { allowArrowFunctions: false })).toThrow(
+      'Arrow functions are not enabled',
+    )
+  })
+  test('arrow functions reject lexical this-like references', () => {
+    expect(() => parseExpression('() => this')).toThrow("do not support 'this'")
+    expect(() => parseExpression('() => arguments')).toThrow("do not support 'arguments'")
+  })
+  test('arrow functions reject block bodies', () => {
+    expect(() => parseExpression('x => { value: x }')).toThrow('block bodies are not supported')
+  })
+  test('performance function mode supports default and rest parameters', () => {
+    expect(
+      ev(
+        '((x, y = x + bonus, ...rest) => y + rest.length)(2, undefined, 1, 2)',
+        { bonus: 3 },
+        { functionMode: 'performance' },
+      ),
+    ).toBe(7)
+  })
+  test('performance function mode preserves destructuring and topic capture', () => {
+    expect(
+      ev(
+        '2 |> ((({ value, count = 1, ...rest }) => value + % + count + rest.extra)({ value: 3, extra: 4 }))',
+        {},
+        { functionMode: 'performance' },
+      ),
+    ).toBe(10)
   })
 
   // ── in operator ───────────────────────────────────────────────────
@@ -587,7 +680,7 @@ describe('evaluator', () => {
   test('pipeline for data transformation', () =>
     expect(
       ev(
-        '"  hello  " |> trim |> upper',
+        '"  hello  " |> trim(%) |> upper(%)',
         {
           trim: (s: string) => s.trim(),
           upper: (s: string) => s.toUpperCase(),

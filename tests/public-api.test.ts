@@ -34,6 +34,20 @@ describe('public API', () => {
     expect(compiled.evaluate({ count: 4 })).toBe(5)
   })
 
+  test('compileExpression supports generated arrow functions with the default call policy', () => {
+    const compiled = compileExpression('(value => value + step)(count)')
+
+    expect(compiled.evaluate({ count: 2, step: 3 })).toBe(5)
+  })
+
+  test('compileExpression supports the performance function backend for generated arrows', () => {
+    const compiled = compileExpression('(value => value + step)(count)', {
+      functionMode: 'performance',
+    })
+
+    expect(compiled.evaluate({ count: 2, step: 3 })).toBe(5)
+  })
+
   test('compile alias is exported from the root entrypoint', () => {
     const compiled = compile('count + 2')
 
@@ -56,6 +70,12 @@ describe('public API', () => {
         node: parseExpression('"A\\u030A".normalize("NFC")'),
       }),
     ).toBe(true)
+  })
+
+  test('parseExpression can disable arrow functions', () => {
+    expect(() => parseExpression('value => value', { allowArrowFunctions: false })).toThrow(
+      'Arrow functions are not enabled',
+    )
   })
 
   test('JSEvaluator merges base and per-call contexts without leaking overrides', () => {

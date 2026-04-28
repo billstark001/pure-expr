@@ -1,5 +1,8 @@
 import { defaultCallPermissionPolicy } from './call-permission.js'
 import type {
+  JSArrowFunctionNode,
+  JSArrowParameterNode,
+  JSBindingNode,
   JSExprNode,
   JSUnaryNode,
   JSBinaryNode,
@@ -69,6 +72,7 @@ const BLOCKED_GLOBALS = new Set([
 ])
 
 export type TaggedTemplateArrayMode = 'spec' | 'loose'
+export type FunctionMode = 'default' | 'performance'
 
 export type RootContextMode =
   | 'allow'
@@ -95,15 +99,47 @@ type EmulatedTemplateStringsArray = TemplateStringsArray & {
   raw: readonly string[]
 }
 
+type CompiledNodeEvaluator = (state: EvalState) => unknown
+type CompiledArrowBinding = (value: unknown, state: EvalState) => void
+type CompiledKeyEvaluator = (state: EvalState) => string
+
+interface CompiledArgumentEvaluator {
+  node: JSExprNode
+  spread: boolean
+  execute: CompiledNodeEvaluator
+}
+
+interface CompiledObjectPropertyEvaluator {
+  spread: boolean
+  key?: CompiledKeyEvaluator
+  execute: CompiledNodeEvaluator
+}
+
+interface CompiledArrowParameterEvaluator {
+  rest: boolean
+  bind: CompiledArrowBinding
+}
+
+interface CompiledArrowRuntime {
+  body: CompiledNodeEvaluator
+  params: CompiledArrowParameterEvaluator[]
+  boundNames: string[]
+  expectedArgumentCount: number
+}
+
 interface EvalState {
   context: Readonly<Record<string, unknown>>
   callDepth: number
   steps: number
+  topics: unknown[]
   opts: Readonly<JSEvalOptions>
 }
 
 const EMPTY_CONTEXT: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_OPTS: Readonly<JSEvalOptions> = Object.freeze({})
+const UNINITIALIZED_ARROW_PARAM = Symbol('pure-expr.uninitialized-arrow-param')
+const PURE_EXPR_ARROW_BRAND = Symbol('pure-expr.arrow-function')
+const PERFORMANCE_ARROW_RUNTIME_CACHE = new WeakMap<JSArrowFunctionNode, CompiledArrowRuntime>()
 
 const DEFAULT_ROOT_CONTEXT_MODE: RootContextMode = 'require-plain-object'
 const DEFAULT_OBJECT_LITERAL_MODE: ObjectLiteralMode = 'filter-blocked'
@@ -124,6 +160,12 @@ function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function createNullPrototypeRecord(): Record<string, unknown> {
   return Object.create(null) as Record<string, unknown>
+}
+
+function cloneContextRecord(source: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const result = Object.getPrototypeOf(source) === null ? createNullPrototypeRecord() : {}
+  for (const key of Object.keys(source)) result[key] = source[key]
+  return result
 }
 
 function isPlainDataContainer(value: object): boolean {
@@ -329,9 +371,17 @@ function ensureCallAllowed(
   }
 
   const policy = state.opts.isCallableAllowed ?? defaultCallPermissionPolicy
+  if (policy === defaultCallPermissionPolicy && isPureExprArrowFunction(fn)) return
   if (!policy({ kind, fn, thisValue, node })) {
     throw new JSEvalError('Calling this function is not permitted', node)
   }
+}
+
+function isPureExprArrowFunction(value: unknown): value is JSCallable {
+  return (
+    typeof value === 'function' &&
+    (value as unknown as Record<PropertyKey, unknown>)[PURE_EXPR_ARROW_BRAND] === true
+  )
 }
 
 function hasOwnEnumerableKeys(value: Readonly<Record<string, unknown>>): boolean {
@@ -392,6 +442,7 @@ export interface JSEvalOptions {
   allowAwait?: boolean
   allowIn?: boolean
   allowCalls?: boolean
+  functionMode?: FunctionMode
   allowRegexLiterals?: boolean
   maxCallDepth?: number
   maxSteps?: number
@@ -406,7 +457,7 @@ export function createEvalState(
   context: Readonly<Record<string, unknown>>,
   opts: Readonly<JSEvalOptions>,
 ): EvalState {
-  return { context, callDepth: 0, steps: 0, opts }
+  return { context, callDepth: 0, steps: 0, topics: [], opts }
 }
 
 /** Evaluates a JavaScript expression node within a given state. */
@@ -429,8 +480,22 @@ export function evalNode(node: JSExprNode, state: EvalState): unknown {
         throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
       if (!Object.prototype.hasOwnProperty.call(state.context, node.name))
         throw new JSEvalError(`'${node.name}' is not defined`, node)
-      return state.context[node.name]
+      const value = state.context[node.name]
+      if (value === UNINITIALIZED_ARROW_PARAM) {
+        throw new JSEvalError(`Cannot access '${node.name}' before initialization`, node)
+      }
+      return value
     }
+
+    case 'topic': {
+      if (state.topics.length === 0) {
+        throw new JSEvalError("Topic reference '%' is only available inside a pipeline body", node)
+      }
+      return state.topics[state.topics.length - 1]
+    }
+
+    case 'arrow-function':
+      return evalArrowFunction(node, state)
 
     case 'unary':
       return evalUnary(node, state)
@@ -494,20 +559,867 @@ export function evalNode(node: JSExprNode, state: EvalState): unknown {
     }
 
     case 'pipeline': {
-      // Hack-style: left |> right  ≡  right(left)
       const value = evalNode(node.left, state)
-      const fn = evalNode(node.right, state)
-      if (typeof fn !== 'function')
-        throw new JSEvalError('Right-hand side of |> must be a function', node)
-      const callable = fn as JSCallable
-      ensureCallAllowed('pipeline', callable, undefined, node, state)
-      return safeCall1(callable, undefined, value, node, state)
+      state.topics.push(value)
+      try {
+        return evalNode(node.right, state)
+      } finally {
+        state.topics.pop()
+      }
     }
 
     default: {
       const exhaustive: never = node
       throw new JSEvalError(`Unknown node type: ${(exhaustive as any).type}`, node as any)
     }
+  }
+}
+
+function evalArrowFunction(node: JSArrowFunctionNode, state: EvalState): unknown {
+  return state.opts.functionMode === 'performance'
+    ? evalArrowFunctionPerformance(node, state)
+    : evalArrowFunctionDefault(node, state)
+}
+
+function evalArrowFunctionDefault(node: JSArrowFunctionNode, state: EvalState): unknown {
+  const capturedContext = state.context
+  const capturedTopics = state.topics.slice()
+  const capturedOpts = state.opts
+  const expectedArgumentCount = getArrowExpectedArgumentCount(node.params)
+
+  return createPureExprArrowFunction((...args: unknown[]) => {
+    const localContext = cloneContextRecord(capturedContext)
+    for (const name of collectArrowBoundNames(node.params)) {
+      localContext[name] = UNINITIALIZED_ARROW_PARAM
+    }
+
+    const callState = createEvalState(localContext, capturedOpts)
+    callState.topics = capturedTopics.slice()
+    bindArrowParameters(node.params, args, callState)
+    return evalNode(node.body, callState)
+  }, expectedArgumentCount)
+}
+
+function evalArrowFunctionPerformance(node: JSArrowFunctionNode, state: EvalState): unknown {
+  const runtime = getCompiledArrowRuntime(node)
+  const capturedContext = state.context
+  const capturedTopics = state.topics.slice()
+  const capturedOpts = state.opts
+
+  return createPureExprArrowFunction((...args: unknown[]) => {
+    const localContext = cloneContextRecord(capturedContext)
+    for (const name of runtime.boundNames) {
+      localContext[name] = UNINITIALIZED_ARROW_PARAM
+    }
+
+    const callState = createEvalState(localContext, capturedOpts)
+    callState.topics = capturedTopics.slice()
+    bindCompiledArrowParameters(runtime.params, args, callState)
+    return runtime.body(callState)
+  }, runtime.expectedArgumentCount)
+}
+
+function createPureExprArrowFunction(
+  invoke: (...args: unknown[]) => unknown,
+  expectedArgumentCount: number,
+): JSCallable {
+  const fn = (...args: unknown[]) => invoke(...args)
+
+  Object.defineProperty(fn, PURE_EXPR_ARROW_BRAND, {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+
+  try {
+    Object.defineProperty(fn, 'length', {
+      value: expectedArgumentCount,
+      enumerable: false,
+      writable: false,
+      configurable: true,
+    })
+  } catch {
+    // Ignore runtimes that expose non-configurable function length descriptors.
+  }
+
+  return fn as JSCallable
+}
+
+function getCompiledArrowRuntime(node: JSArrowFunctionNode): CompiledArrowRuntime {
+  const cached = PERFORMANCE_ARROW_RUNTIME_CACHE.get(node)
+  if (cached) return cached
+
+  const compiled = {
+    body: compileNode(node.body),
+    params: node.params.map((param) => ({
+      rest: param.rest,
+      bind: compileArrowBinding(param.binding),
+    })),
+    boundNames: collectArrowBoundNames(node.params),
+    expectedArgumentCount: getArrowExpectedArgumentCount(node.params),
+  } satisfies CompiledArrowRuntime
+
+  PERFORMANCE_ARROW_RUNTIME_CACHE.set(node, compiled)
+  return compiled
+}
+
+function withCompiledStep(node: JSExprNode, execute: CompiledNodeEvaluator): CompiledNodeEvaluator {
+  return (state) => {
+    consumeStep(state, node)
+    return execute(state)
+  }
+}
+
+function compileNode(node: JSExprNode): CompiledNodeEvaluator {
+  switch (node.type) {
+    case 'literal':
+      return withCompiledStep(node, () => node.value)
+
+    case 'regex':
+      return withCompiledStep(node, (state) => {
+        if (state.opts.allowRegexLiterals === false) {
+          throw new JSEvalError('Regular expression literals are not enabled', node)
+        }
+        return new RegExp(node.pattern, node.flags)
+      })
+
+    case 'identifier':
+      return withCompiledStep(node, (state) => {
+        if (BLOCKED_GLOBALS.has(node.name)) {
+          throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
+        }
+        if (!Object.prototype.hasOwnProperty.call(state.context, node.name)) {
+          throw new JSEvalError(`'${node.name}' is not defined`, node)
+        }
+        const value = state.context[node.name]
+        if (value === UNINITIALIZED_ARROW_PARAM) {
+          throw new JSEvalError(`Cannot access '${node.name}' before initialization`, node)
+        }
+        return value
+      })
+
+    case 'topic':
+      return withCompiledStep(node, (state) => {
+        if (state.topics.length === 0) {
+          throw new JSEvalError(
+            "Topic reference '%' is only available inside a pipeline body",
+            node,
+          )
+        }
+        return state.topics[state.topics.length - 1]
+      })
+
+    case 'arrow-function':
+      return withCompiledStep(node, (state) => evalArrowFunction(node, state))
+
+    case 'unary': {
+      const operand = compileNode(node.operand)
+      return withCompiledStep(node, (state) => {
+        if (node.operator === 'typeof') {
+          try {
+            const value = operand(state)
+            return typeof value
+          } catch (error) {
+            if (error instanceof JSEvalError && node.operand.type === 'identifier')
+              return 'undefined'
+            throw error
+          }
+        }
+
+        const value = operand(state)
+        switch (node.operator) {
+          case '!':
+            return !value
+          case '~':
+            return ~(value as any)
+          case '+':
+            return +(value as any)
+          case '-':
+            return -(value as any)
+          case 'void':
+            return undefined
+          case 'await':
+            return value
+        }
+      })
+    }
+
+    case 'binary': {
+      const left = compileNode(node.left)
+      const right = compileNode(node.right)
+      return withCompiledStep(node, (state) => {
+        const l = left(state)
+        const r = right(state)
+        switch (node.operator) {
+          case '+':
+            return (l as any) + (r as any)
+          case '-':
+            return (l as any) - (r as any)
+          case '*':
+            return (l as any) * (r as any)
+          case '/':
+            return (l as any) / (r as any)
+          case '%':
+            return (l as any) % (r as any)
+          case '**':
+            return (l as any) ** (r as any)
+          case '&':
+            return (l as any) & (r as any)
+          case '|':
+            return (l as any) | (r as any)
+          case '^':
+            return (l as any) ^ (r as any)
+          case '<<':
+            return (l as any) << (r as any)
+          case '>>':
+            return (l as any) >> (r as any)
+          case '>>>':
+            return (l as any) >>> (r as any)
+          case '==':
+            // biome-ignore lint/suspicious/noDoubleEquals: The evaluator intentionally preserves JS loose equality semantics.
+            return l == r
+          case '!=':
+            // biome-ignore lint/suspicious/noDoubleEquals: The evaluator intentionally preserves JS loose inequality semantics.
+            return l != r
+          case '===':
+            return l === r
+          case '!==':
+            return l !== r
+          case '<':
+            return (l as any) < (r as any)
+          case '>':
+            return (l as any) > (r as any)
+          case '<=':
+            return (l as any) <= (r as any)
+          case '>=':
+            return (l as any) >= (r as any)
+          case 'instanceof':
+            return (l as any) instanceof (r as any)
+          case 'in':
+            return (l as any) in (r as any)
+          default:
+            throw new JSEvalError(`Unknown binary operator '${node.operator}'`, node)
+        }
+      })
+    }
+
+    case 'logical': {
+      const left = compileNode(node.left)
+      const right = compileNode(node.right)
+      return withCompiledStep(node, (state) => {
+        const value = left(state)
+        switch (node.operator) {
+          case '&&':
+            return value ? right(state) : value
+          case '||':
+            return value ? value : right(state)
+          case '??':
+            return value != null ? value : right(state)
+        }
+      })
+    }
+
+    case 'conditional': {
+      const test = compileNode(node.test)
+      const consequent = compileNode(node.consequent)
+      const alternate = compileNode(node.alternate)
+      return withCompiledStep(node, (state) => (test(state) ? consequent(state) : alternate(state)))
+    }
+
+    case 'member': {
+      const object = compileNode(node.object)
+      const property = node.computed ? compileNode(node.property) : undefined
+      const identifierKey = !node.computed ? (node.property as JSIdentifierNode).name : undefined
+
+      return withCompiledStep(node, (state) => {
+        const target = object(state)
+        if (node.optional && target == null) return undefined
+        if (target == null) {
+          throw new JSEvalError(
+            `Cannot read properties of ${target === null ? 'null' : 'undefined'}`,
+            node,
+          )
+        }
+
+        const key = property ? String(property(state)) : identifierKey!
+        if (BLOCKED_PROPS.has(key)) {
+          throw new JSEvalError(`Access to property '${key}' is not permitted`, node)
+        }
+
+        return (target as any)[key]
+      })
+    }
+
+    case 'call': {
+      const args = compileArgumentEvaluators(node.args)
+
+      if (node.callee.type === 'member') {
+        const memberNode = node.callee
+        const object = compileNode(memberNode.object)
+        const property = memberNode.computed ? compileNode(memberNode.property) : undefined
+        const identifierKey = !memberNode.computed
+          ? (memberNode.property as JSIdentifierNode).name
+          : undefined
+
+        return withCompiledStep(node, (state) => {
+          const target = object(state)
+          if (memberNode.optional && target == null) return undefined
+          if (target == null) throw new JSEvalError('Cannot call method on null/undefined', node)
+
+          const key = property ? String(property(state)) : identifierKey!
+          if (BLOCKED_PROPS.has(key)) {
+            throw new JSEvalError(`Access to method '${key}' is not permitted`, node)
+          }
+
+          const fn = (target as any)[key]
+          if (node.optional && fn == null) return undefined
+          if (typeof fn !== 'function') {
+            throw new JSEvalError(
+              `'${memberNode.property.type === 'identifier' ? memberNode.property.name : 'value'}' is not a function`,
+              node,
+            )
+          }
+
+          const callable = fn as JSCallable
+          ensureCallAllowed('call', callable, target, node, state)
+          return invokeCompiledCall(callable, target, args, node, state)
+        })
+      }
+
+      const callee = compileNode(node.callee)
+      const calleeName = node.callee.type === 'identifier' ? node.callee.name : 'value'
+
+      return withCompiledStep(node, (state) => {
+        const fn = callee(state)
+        if (node.optional && fn == null) return undefined
+        if (typeof fn !== 'function') {
+          throw new JSEvalError(`'${calleeName}' is not a function`, node)
+        }
+
+        const callable = fn as JSCallable
+        ensureCallAllowed('call', callable, undefined, node, state)
+        return invokeCompiledCall(callable, undefined, args, node, state)
+      })
+    }
+
+    case 'array': {
+      const elements = node.elements.map((element) => (element ? compileNode(element) : null))
+      return withCompiledStep(node, (state) => {
+        const result: unknown[] = []
+        for (let index = 0; index < node.elements.length; index += 1) {
+          consumeStep(state, node)
+          const element = node.elements[index]
+          const execute = elements[index]
+          if (element === null || execute === null) {
+            result.push(undefined)
+          } else if (element.type === 'spread') {
+            appendIterableValues(result, execute(state), element, state)
+          } else {
+            result.push(execute(state))
+          }
+        }
+        return result
+      })
+    }
+
+    case 'object': {
+      const props = node.props.map((prop) =>
+        prop.type === 'spread'
+          ? ({
+              spread: true,
+              execute: compileNode(prop.argument),
+            } satisfies CompiledObjectPropertyEvaluator)
+          : ({
+              spread: false,
+              key: compileKeyEvaluator(prop.key, prop.computed),
+              execute: compileNode(prop.value),
+            } satisfies CompiledObjectPropertyEvaluator),
+      )
+
+      return withCompiledStep(node, (state) => {
+        const result = createObjectLiteralResult(getObjectLiteralMode(state.opts))
+        for (const prop of props) {
+          if (prop.spread) {
+            copySpreadProperties(result, prop.execute(state), node, state)
+          } else {
+            consumeStep(state, node)
+            const key = prop.key!(state)
+            if (BLOCKED_PROPS.has(key)) {
+              throw new JSEvalError(`Property '${key}' is not accessible`, node)
+            }
+            result[key] = prop.execute(state)
+          }
+        }
+        return result
+      })
+    }
+
+    case 'template': {
+      const expressions = node.expressions.map((expression) => compileNode(expression))
+
+      if (node.tag) {
+        if (node.tag.type === 'member') {
+          const tagNode = node.tag
+          const object = compileNode(tagNode.object)
+          const property = tagNode.computed ? compileNode(tagNode.property) : undefined
+          const identifierKey = !tagNode.computed
+            ? (tagNode.property as JSIdentifierNode).name
+            : undefined
+
+          return withCompiledStep(node, (state) => {
+            let thisVal: unknown
+            let tag: unknown
+            const target = object(state)
+
+            if (tagNode.optional && target == null) {
+              tag = undefined
+            } else {
+              if (target == null) {
+                throw new JSEvalError(
+                  `Cannot read properties of ${target === null ? 'null' : 'undefined'}`,
+                  tagNode,
+                )
+              }
+
+              const key = property ? String(property(state)) : identifierKey!
+              if (BLOCKED_PROPS.has(key)) {
+                throw new JSEvalError(`Access to property '${key}' is not permitted`, tagNode)
+              }
+
+              thisVal = target
+              tag = (target as any)[key]
+            }
+
+            if (typeof tag !== 'function')
+              throw new JSEvalError('Template tag must be a function', node)
+
+            const callableTag = tag as JSCallable
+            ensureCallAllowed('tagged-template', callableTag, thisVal, node, state)
+
+            const templateObject = getTaggedTemplateObject(
+              node,
+              state.opts.taggedTemplateArrayMode ?? 'spec',
+            )
+            const args = new Array<unknown>(expressions.length + 1)
+            args[0] = templateObject
+            for (let index = 0; index < expressions.length; index += 1) {
+              args[index + 1] = expressions[index](state)
+            }
+
+            return safeCall(callableTag, thisVal, args, node, state)
+          })
+        }
+
+        const tag = compileNode(node.tag)
+        return withCompiledStep(node, (state) => {
+          const resolvedTag = tag(state)
+          if (typeof resolvedTag !== 'function') {
+            throw new JSEvalError('Template tag must be a function', node)
+          }
+
+          const callableTag = resolvedTag as JSCallable
+          ensureCallAllowed('tagged-template', callableTag, undefined, node, state)
+
+          const templateObject = getTaggedTemplateObject(
+            node,
+            state.opts.taggedTemplateArrayMode ?? 'spec',
+          )
+          const args = new Array<unknown>(expressions.length + 1)
+          args[0] = templateObject
+          for (let index = 0; index < expressions.length; index += 1) {
+            args[index + 1] = expressions[index](state)
+          }
+
+          return safeCall(callableTag, undefined, args, node, state)
+        })
+      }
+
+      return withCompiledStep(node, (state) => {
+        let result = ''
+        for (let index = 0; index < node.quasis.length; index += 1) {
+          result += node.quasis[index].cooked ?? node.quasis[index].raw
+          if (index < expressions.length) result += String(expressions[index](state))
+        }
+        return result
+      })
+    }
+
+    case 'spread':
+      return withCompiledStep(node, () => {
+        throw new JSEvalError('Unexpected spread expression outside of array/call/object', node)
+      })
+
+    case 'sequence': {
+      const expressions = node.expressions.map((expression) => compileNode(expression))
+      return withCompiledStep(node, (state) => {
+        let last: unknown
+        for (const expression of expressions) last = expression(state)
+        return last
+      })
+    }
+
+    case 'pipeline': {
+      const left = compileNode(node.left)
+      const right = compileNode(node.right)
+      return withCompiledStep(node, (state) => {
+        const value = left(state)
+        state.topics.push(value)
+        try {
+          return right(state)
+        } finally {
+          state.topics.pop()
+        }
+      })
+    }
+  }
+}
+
+function compileKeyEvaluator(keyNode: JSExprNode, computed: boolean): CompiledKeyEvaluator {
+  if (!computed && keyNode.type === 'identifier') {
+    const key = keyNode.name
+    return () => key
+  }
+  if (!computed && keyNode.type === 'literal') {
+    const key = String(keyNode.value)
+    return () => key
+  }
+
+  const execute = compileNode(keyNode)
+  return (state) => String(execute(state))
+}
+
+function compileArgumentEvaluators(
+  args: Array<JSExprNode | JSSpreadNode>,
+): CompiledArgumentEvaluator[] {
+  return args.map((arg) =>
+    arg.type === 'spread'
+      ? {
+          node: arg,
+          spread: true,
+          execute: compileNode(arg.argument),
+        }
+      : {
+          node: arg,
+          spread: false,
+          execute: compileNode(arg),
+        },
+  )
+}
+
+function evalCompiledArgs(args: CompiledArgumentEvaluator[], state: EvalState): unknown[] {
+  let hasSpread = false
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index].spread) {
+      hasSpread = true
+      break
+    }
+  }
+
+  if (!hasSpread) {
+    const result = new Array<unknown>(args.length)
+    for (let index = 0; index < args.length; index += 1) {
+      result[index] = args[index].execute(state)
+    }
+    return result
+  }
+
+  const result: unknown[] = []
+  for (const arg of args) {
+    if (arg.spread) appendIterableValues(result, arg.execute(state), arg.node, state)
+    else result.push(arg.execute(state))
+  }
+  return result
+}
+
+function invokeCompiledCall(
+  callable: JSCallable,
+  thisVal: unknown,
+  args: CompiledArgumentEvaluator[],
+  node: JSExprNode,
+  state: EvalState,
+): unknown {
+  switch (args.length) {
+    case 0:
+      return safeCall0(callable, thisVal, node, state)
+    case 1:
+      if (!args[0].spread) {
+        return safeCall1(callable, thisVal, args[0].execute(state), node, state)
+      }
+      break
+    case 2:
+      if (!args[0].spread && !args[1].spread) {
+        return safeCall2(
+          callable,
+          thisVal,
+          args[0].execute(state),
+          args[1].execute(state),
+          node,
+          state,
+        )
+      }
+      break
+    case 3:
+      if (!args[0].spread && !args[1].spread && !args[2].spread) {
+        return safeCall3(
+          callable,
+          thisVal,
+          args[0].execute(state),
+          args[1].execute(state),
+          args[2].execute(state),
+          node,
+          state,
+        )
+      }
+      break
+    case 4:
+      if (!args[0].spread && !args[1].spread && !args[2].spread && !args[3].spread) {
+        return safeCall4(
+          callable,
+          thisVal,
+          args[0].execute(state),
+          args[1].execute(state),
+          args[2].execute(state),
+          args[3].execute(state),
+          node,
+          state,
+        )
+      }
+      break
+  }
+
+  return safeCall(callable, thisVal, evalCompiledArgs(args, state), node, state)
+}
+
+function bindCompiledArrowParameters(
+  params: CompiledArrowParameterEvaluator[],
+  args: unknown[],
+  state: EvalState,
+): void {
+  let argIndex = 0
+
+  for (const param of params) {
+    const value = param.rest ? args.slice(argIndex) : args[argIndex]
+    if (!param.rest) argIndex += 1
+    else argIndex = args.length
+    param.bind(value, state)
+  }
+}
+
+function compileArrowBinding(binding: JSBindingNode): CompiledArrowBinding {
+  switch (binding.type) {
+    case 'binding-identifier':
+      return (value, state) => {
+        ;(state.context as Record<string, unknown>)[binding.name] = value
+      }
+
+    case 'binding-assignment': {
+      const left = compileArrowBinding(binding.left)
+      const defaultValue = compileNode(binding.defaultValue)
+      return (value, state) => {
+        left(value === undefined ? defaultValue(state) : value, state)
+      }
+    }
+
+    case 'binding-array': {
+      const elements = binding.elements.map((element) =>
+        element === null ? null : compileArrowBinding(element),
+      )
+      const rest = binding.rest ? compileArrowBinding(binding.rest) : null
+      return (value, state) => {
+        if (
+          value == null ||
+          typeof (value as Record<PropertyKey, unknown>)[Symbol.iterator] !== 'function'
+        ) {
+          throw new JSEvalError('Array binding patterns require an iterable value')
+        }
+
+        const values = Array.from(value as Iterable<unknown>)
+        let index = 0
+        for (const element of elements) {
+          if (element) element(values[index], state)
+          index += 1
+        }
+        if (rest) rest(values.slice(index), state)
+      }
+    }
+
+    case 'binding-object': {
+      const properties = binding.properties.map((prop) => ({
+        key: compileKeyEvaluator(prop.key, prop.computed),
+        bind: compileArrowBinding(prop.value),
+      }))
+      const restName = binding.rest?.name
+      const restStepNode = binding.rest ? keyNodeForStepBudget(binding.rest) : undefined
+
+      return (value, state) => {
+        if (value == null) {
+          throw new JSEvalError('Object binding patterns cannot destructure null or undefined')
+        }
+
+        const source = Object(value) as Record<string, unknown>
+        const excluded = restName ? new Set<string>() : undefined
+
+        for (const prop of properties) {
+          const key = prop.key(state)
+          excluded?.add(key)
+          prop.bind(source[key], state)
+        }
+
+        if (restName) {
+          const restValue = createObjectLiteralResult(getObjectLiteralMode(state.opts))
+          for (const key of Object.keys(source)) {
+            consumeStep(state, restStepNode!)
+            if (excluded!.has(key) || BLOCKED_PROPS.has(key)) continue
+            restValue[key] = source[key]
+          }
+          ;(state.context as Record<string, unknown>)[restName] = restValue
+        }
+      }
+    }
+  }
+}
+
+function getArrowExpectedArgumentCount(params: JSArrowParameterNode[]): number {
+  let count = 0
+
+  for (const param of params) {
+    if (param.rest || bindingHasInitializer(param.binding)) return count
+    count += 1
+  }
+
+  return count
+}
+
+function bindingHasInitializer(binding: JSBindingNode): boolean {
+  switch (binding.type) {
+    case 'binding-identifier':
+      return false
+    case 'binding-assignment':
+      return true
+    case 'binding-array':
+      return binding.elements.some((element) => element !== null && bindingHasInitializer(element))
+    case 'binding-object':
+      return binding.properties.some((prop) => bindingHasInitializer(prop.value))
+  }
+}
+
+function collectArrowBoundNames(params: JSArrowParameterNode[]): string[] {
+  const names: string[] = []
+  for (const param of params) collectBindingNames(param.binding, names)
+  return names
+}
+
+function collectBindingNames(binding: JSBindingNode, names: string[]): void {
+  switch (binding.type) {
+    case 'binding-identifier':
+      names.push(binding.name)
+      return
+    case 'binding-assignment':
+      collectBindingNames(binding.left, names)
+      return
+    case 'binding-array':
+      for (const element of binding.elements) {
+        if (element) collectBindingNames(element, names)
+      }
+      if (binding.rest) collectBindingNames(binding.rest, names)
+      return
+    case 'binding-object':
+      for (const prop of binding.properties) collectBindingNames(prop.value, names)
+      if (binding.rest) names.push(binding.rest.name)
+      return
+  }
+}
+
+function bindArrowParameters(
+  params: JSArrowParameterNode[],
+  args: unknown[],
+  state: EvalState,
+): void {
+  let argIndex = 0
+
+  for (const param of params) {
+    const value = param.rest ? args.slice(argIndex) : args[argIndex]
+    if (!param.rest) argIndex += 1
+    else argIndex = args.length
+    bindArrowBinding(param.binding, value, state)
+  }
+}
+
+function bindArrowBinding(binding: JSBindingNode, value: unknown, state: EvalState): void {
+  switch (binding.type) {
+    case 'binding-identifier':
+      ;(state.context as Record<string, unknown>)[binding.name] = value
+      return
+
+    case 'binding-assignment':
+      bindArrowBinding(
+        binding.left,
+        value === undefined ? evalNode(binding.defaultValue, state) : value,
+        state,
+      )
+      return
+
+    case 'binding-array': {
+      if (
+        value == null ||
+        typeof (value as Record<PropertyKey, unknown>)[Symbol.iterator] !== 'function'
+      ) {
+        throw new JSEvalError('Array binding patterns require an iterable value')
+      }
+
+      const values = Array.from(value as Iterable<unknown>)
+      let index = 0
+      for (const element of binding.elements) {
+        if (element) bindArrowBinding(element, values[index], state)
+        index += 1
+      }
+      if (binding.rest) bindArrowBinding(binding.rest, values.slice(index), state)
+      return
+    }
+
+    case 'binding-object': {
+      if (value == null) {
+        throw new JSEvalError('Object binding patterns cannot destructure null or undefined')
+      }
+
+      const source = Object(value) as Record<string, unknown>
+      const excluded = new Set<string>()
+
+      for (const prop of binding.properties) {
+        const key = getBindingPropertyKey(prop.key, prop.computed, state)
+        excluded.add(key)
+        bindArrowBinding(prop.value, source[key], state)
+      }
+
+      if (binding.rest) {
+        const restValue = createObjectLiteralResult(getObjectLiteralMode(state.opts))
+        for (const key of Object.keys(source)) {
+          consumeStep(state, keyNodeForStepBudget(binding.rest))
+          if (excluded.has(key) || BLOCKED_PROPS.has(key)) continue
+          restValue[key] = source[key]
+        }
+        ;(state.context as Record<string, unknown>)[binding.rest.name] = restValue
+      }
+      return
+    }
+  }
+}
+
+function getBindingPropertyKey(keyNode: JSExprNode, computed: boolean, state: EvalState): string {
+  if (computed) return String(evalNode(keyNode, state))
+  if (keyNode.type === 'identifier') return keyNode.name
+  if (keyNode.type === 'literal') return String(keyNode.value)
+  return String(evalNode(keyNode, state))
+}
+
+function keyNodeForStepBudget(binding: JSBindingNode): JSExprNode {
+  return {
+    type: 'literal',
+    value: undefined,
+    raw: 'undefined',
+    start: binding.start,
+    end: binding.end,
   }
 }
 
@@ -947,6 +1859,7 @@ export class JSEvaluator {
   ) {
     this.resolvedOpts = {
       ...opts,
+      functionMode: opts.functionMode ?? 'default',
       rootContextMode: opts.rootContextMode ?? DEFAULT_ROOT_CONTEXT_MODE,
       objectLiteralMode: opts.objectLiteralMode ?? DEFAULT_OBJECT_LITERAL_MODE,
       isCallableAllowed: opts.isCallableAllowed ?? defaultCallPermissionPolicy,

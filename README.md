@@ -56,10 +56,15 @@ The expression engine supports:
 
 - numbers, bigint, strings, booleans, null, undefined, and regex literals
 - arrays, objects, spread, property access, optional chaining, and function calls
-- unary, binary, logical, ternary, sequence, and pipeline operators
+- unary, binary, logical, ternary, sequence, and Hack-style pipeline operators with `%` topic references
+- concise-body arrow functions with JavaScript-style parameter lists, defaults, rest parameters, and destructuring
 - JavaScript template literals and tagged template literals
 
 Calls are evaluated through a permission policy. By default, only a conservative set of standard-library calls is allowed; custom functions and methods must be explicitly allowed with evaluator options.
+
+Hack pipes follow the [TC39 Hack-pipe](https://github.com/tc39/proposal-pipeline-operator) shape in this package: the right-hand side is an expression body that must reference `%` at least once, and `%` is only valid inside a pipeline body.
+
+Arrow functions are limited to concise bodies in this package. Block bodies, `function` syntax, and lexical-environment features such as `this`, `arguments`, `super`, and `new.target` are rejected.
 
 For compatibility with the pre-hardening callable behavior, import allowAllCalls and pass it as isCallableAllowed.
 
@@ -74,11 +79,13 @@ Useful expression APIs:
 Useful expression options:
 
 - allowAwait: enable parsing of await expressions in sync mode
+- allowArrowFunctions: enable or disable concise-body arrow functions
 - allowIn: enable the in operator
-- allowCalls: disable all calls, tagged templates, and pipelines when set to false
+- allowCalls: disable all calls, tagged templates, pipeline-internal calls, and arrow-function invocations when set to false
 - allowRegexLiterals: disable regex literals when set to false
 - allowTemplateLiterals: enable or disable untagged template literals
 - allowTaggedTemplates: enable or disable tagged template literals independently
+- functionMode: choose the function-evaluation backend; `default` uses the evaluator-backed closure path and `performance` uses a cached compiled backend for pure-expr-generated arrow functions
 - maxSourceLength: reject overly long expression source strings during parsing
 - maxAstNodes: reject expressions whose AST exceeds a node-count budget
 - maxAstDepth: reject expressions whose AST exceeds a depth budget
@@ -103,6 +110,23 @@ evaluate('format(name)', {
 }, {
  isCallableAllowed: allowAllCalls,
 });
+```
+
+Hack-pipe and arrow examples:
+
+```ts
+import { evaluate } from 'pure-expr';
+
+evaluate('5 |> double(%) |> format(%)', {
+ double: (value: number) => value * 2,
+ format: (value: number) => `#${value}`,
+});
+// '#10'
+
+evaluate('((value, suffix = "!") => `${value}${suffix}`)(name)', {
+ name: 'Ada',
+});
+// 'Ada!'
 ```
 
 For custom pipelines you can also use JSLexer, JSExpressionParser, JSEvaluator, and the exported AST node types.
@@ -135,16 +159,18 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 - In practice, ES2015 is a reasonable emit baseline for bundlers and downstream transpilers, but it is not sufficient if you need this package itself to run unchanged on old engines with no bigint or newer built-ins.
 - Expressions are intentionally read-only. Statements and assignment operators are rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
+- Arrow functions are concise-body only. `this`, `arguments`, `super`, and `new.target` are rejected, and `function` / class definitions remain unsupported.
 - Root evaluation contexts must be plain objects or null-prototype objects by default. Use rootContextMode to opt into copying non-plain roots, allowing them unchanged, or deep-copying a plain data graph with copy-plain-data-to-null-prototype.
 - copy-plain-data-to-null-prototype rejects accessor properties and circular references anywhere in the root data graph, and it clones plain-object/array data into null-prototype/plain-array containers before evaluation.
 - Getter and Proxy handling still has a platform limitation: JavaScript does not provide a reliable portable Proxy brand check, and reflective inspection may itself trigger Proxy traps while the data graph is being validated/copied. Treat Proxy-backed contexts as unsupported in hardened deployments until a future release offers a stricter strategy.
-- Function calls are not fully sandboxed. The default call policy only permits a conservative subset of standard-library functions and methods; custom or host-provided callables require explicit approval through isCallableAllowed.
+- pure-expr is not a general-purpose sandbox. It blocks a number of dangerous globals and prototype-chain escape hatches, but allowed host values and functions still execute with normal host semantics.
+- Function calls are not fully sandboxed. The default call policy only permits a conservative subset of standard-library functions and methods, plus pure-expr-generated arrow functions; custom or host-provided callables still require explicit approval through isCallableAllowed.
 - Object spread filters blocked keys by default. Use objectLiteralMode to opt into legacy behavior, plain-object-only spread, or null-prototype safe object literals.
 - Resource controls such as maxSourceLength, AST budgets, maxSteps, allowCalls, and allowRegexLiterals are opt-in.
 - The runtime step budget now counts elements expanded through array and call spread syntax.
 - Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
 - Template placeholders do not parse embedded JavaScript while searching for their closing delimiter. If the embedded source contains the same closing brace run as the surrounding delimiter, increase the delimiter length on both sides.
-- Dangerous globals and prototype-chain escape hatches are blocked, but user-provided functions still run as provided.
+- The `functionMode: 'performance'` option is implemented for pure-expr-generated arrow functions. It keeps the same language and safety semantics as the default mode, but uses a cached compiled execution path for arrow bodies. Non-function expressions still use the standard evaluator path.
 
 ## Publishing
 
@@ -166,6 +192,6 @@ pnpm run bench:template
 pnpm run ci
 ```
 
-The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, and short repeated expressions.
+The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, short repeated, and Hack-pipe-heavy expressions. It also reports arrow-function creation and invocation throughput for both the `default` and `performance` function backends.
 
 The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, and short repeated templates.
