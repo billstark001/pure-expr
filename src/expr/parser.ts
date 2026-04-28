@@ -1,13 +1,6 @@
-import { cookTemplate, type JSToken, type JSTokenKind } from './lexer.js'
+import type { JSToken, JSTokenKind } from './lexer.js'
 import type {
   JSArrowFunctionNode,
-  JSArrowParameterNode,
-  JSBindingArrayNode,
-  JSBindingAssignmentNode,
-  JSBindingIdentifierNode,
-  JSBindingNode,
-  JSBindingObjectNode,
-  JSBindingPropertyNode,
   JSExprNode,
   JSMemberNode,
   JSCallNode,
@@ -21,151 +14,25 @@ import type {
   JSTemplateNode,
   JSTopicReferenceNode,
 } from './node-types.js'
+import {
+  isArrowFunctionStart as detectArrowFunctionStart,
+  parseArrowFunction as parseArrowFunctionWithBindings,
+  type ParserBindingDelegate,
+} from './parser/bindings.js'
+import {
+  FORBIDDEN_ASSIGNMENT_OPERATORS,
+  FORBIDDEN_PREFIX_IDENTIFIERS,
+  INFIX_PREC,
+  PREC,
+  RIGHT_ASSOC,
+} from './parser/grammar.js'
+import { JSParseError, type JSParserOptions } from './parser/errors.js'
+import { parseStringValue } from './parser/shared.js'
+import { buildTemplateAstNode } from './parser/template.js'
+import { assertValidLogicalMixing, validateTopicUsage } from './parser/validation.js'
 
-// #region Parse helpers, errors, and options
-
-function parseStringValue(raw: string): string {
-  // strip quotes and handle escapes
-  return cookTemplate(raw.slice(1, -1)) ?? raw.slice(1, -1)
-}
-
-/** Error raised while parsing tokens into an expression AST. */
-export class JSParseError extends Error {
-  start?: number
-  end?: number
-  token?: JSToken
-
-  constructor(message: string, token?: JSToken, src = '') {
-    const pos = token?.start !== undefined ? ` at position ${token.start}–${token.end}` : ''
-    // Source context snippet with pointer
-    let snippet = ''
-    if (src && token?.start !== undefined) {
-      const lo = Math.max(0, token.start - 20)
-      const hi = Math.min(src.length, (token.end ?? token.start) + 20)
-      const line = src.slice(lo, hi)
-      const ptr =
-        ' '.repeat(token.start - lo) +
-        '~'.repeat(Math.max(1, (token.end ?? token.start + 1) - token.start))
-      snippet = `\n  ${line}\n  ${ptr}`
-    }
-    super(message + pos + snippet)
-    this.name = 'JSParseError'
-    this.start = token?.start
-    this.end = token?.end
-    this.token = token
-  }
-}
-
-/** Parser feature flags for the expression grammar. */
-export interface JSParserOptions {
-  allowAwait?: boolean
-  allowArrowFunctions?: boolean
-  allowIn?: boolean
-  allowRegexLiterals?: boolean
-  allowTemplateLiterals?: boolean
-  allowTaggedTemplates?: boolean
-  maxSourceLength?: number
-  maxAstNodes?: number
-  maxAstDepth?: number
-  maxArrayElements?: number
-  maxObjectProperties?: number
-  maxCallArguments?: number
-  maxTemplateExpressions?: number
-}
-
-// #endregion
-
-// #region Parser precedence and grammar guards
-
-// Operator precedence table (higher = tighter binding)
-const PREC = {
-  COMMA: 1,
-  PIPELINE: 3,
-  CONDITIONAL: 4,
-  NULLCOAL: 5,
-  OR: 5,
-  AND: 6,
-  BITOR: 7,
-  BITXOR: 8,
-  BITAND: 9,
-  EQUALITY: 10,
-  RELATIONAL: 11,
-  SHIFT: 12,
-  ADD: 13,
-  MUL: 14,
-  EXP: 15,
-  UNARY: 16,
-  POSTFIX: 17,
-} as const
-
-const INFIX_PREC: Record<string, number> = {
-  '||': PREC.OR,
-  '??': PREC.NULLCOAL,
-  '&&': PREC.AND,
-  '|': PREC.BITOR,
-  '^': PREC.BITXOR,
-  '&': PREC.BITAND,
-  '==': PREC.EQUALITY,
-  '!=': PREC.EQUALITY,
-  '===': PREC.EQUALITY,
-  '!==': PREC.EQUALITY,
-  '<': PREC.RELATIONAL,
-  '>': PREC.RELATIONAL,
-  '<=': PREC.RELATIONAL,
-  '>=': PREC.RELATIONAL,
-  instanceof: PREC.RELATIONAL,
-  '<<': PREC.SHIFT,
-  '>>': PREC.SHIFT,
-  '>>>': PREC.SHIFT,
-  '+': PREC.ADD,
-  '-': PREC.ADD,
-  '*': PREC.MUL,
-  '/': PREC.MUL,
-  '%': PREC.MUL,
-  '**': PREC.EXP, // right-assoc
-  '|>': PREC.PIPELINE, // right-assoc (Hack-style)
-}
-
-const RIGHT_ASSOC = new Set(['**'])
-const FORBIDDEN_ASSIGNMENT_OPERATORS = new Set([
-  '=',
-  '+=',
-  '-=',
-  '*=',
-  '/=',
-  '%=',
-  '**=',
-  '&=',
-  '|=',
-  '^=',
-  '<<=',
-  '>>=',
-  '>>>=',
-  '&&=',
-  '||=',
-  '??=',
-])
-const FORBIDDEN_PREFIX_IDENTIFIERS = new Set([
-  'new',
-  'delete',
-  'yield',
-  'return',
-  'throw',
-  'var',
-  'let',
-  'const',
-  'function',
-  'class',
-])
-const FORBIDDEN_ARROW_BINDING_IDENTIFIERS = new Set([
-  ...FORBIDDEN_PREFIX_IDENTIFIERS,
-  'arguments',
-  'super',
-  'this',
-])
-const FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS = new Set(['arguments', 'super', 'this'])
-
-// #endregion
+export { JSParseError } from './parser/errors.js'
+export type { JSParserOptions } from './parser/errors.js'
 
 // #region Public parser
 
@@ -183,6 +50,8 @@ export class JSExpressionParser {
     this.src = src
   }
 
+  // #region Entry points
+
   parse(): JSExprNode {
     if (this.tokens.length === 0) throw new JSParseError('Empty expression')
     const node = this.parseSequenceExpr()
@@ -190,9 +59,13 @@ export class JSExpressionParser {
       const t = this.peek()!
       throw new JSParseError(`Unexpected token '${t.raw}' after expression`, t, this.src)
     }
-    this.validateTopicUsage(node)
+    validateTopicUsage(node, this.parenthesizedNodes, this.src)
     return node
   }
+
+  // #endregion
+
+  // #region Expression parsing
 
   private parseSequenceExpr(): JSExprNode {
     let left = this.parseAssignmentExpr()
@@ -261,7 +134,7 @@ export class JSExpressionParser {
   private parseExpr(minPrec: number): JSExprNode {
     let left = this.parsePrimary()
 
-    for (; ;) {
+    for (;;) {
       const t = this.peek()
       if (!t) break
 
@@ -422,7 +295,7 @@ export class JSExpressionParser {
 
         // Logical operators get their own node type
         if (t.raw === '&&' || t.raw === '||' || t.raw === '??') {
-          this.assertValidLogicalMixing(t.raw, left, right, t)
+          assertValidLogicalMixing(t.raw, left, right, t, this.parenthesizedNodes, this.src)
           left = {
             type: 'logical',
             operator: t.raw as any,
@@ -449,6 +322,10 @@ export class JSExpressionParser {
 
     return left
   }
+
+  // #endregion
+
+  // #region Primary parsing
 
   // parsePrimary — null-denotation (prefix position)
   private parsePrimary(): JSExprNode {
@@ -657,20 +534,20 @@ export class JSExpressionParser {
             const key: JSExprNode =
               keyTok.kind === 'string'
                 ? {
-                  type: 'literal',
-                  value: parseStringValue(keyTok.raw),
-                  raw: keyTok.raw,
-                  start: keyTok.start,
-                  end: keyTok.end,
-                }
-                : keyTok.kind === 'number' || keyTok.kind === 'bigint'
-                  ? {
                     type: 'literal',
-                    value: parseFloat(keyTok.raw.replace(/_/g, '')),
+                    value: parseStringValue(keyTok.raw),
                     raw: keyTok.raw,
                     start: keyTok.start,
                     end: keyTok.end,
                   }
+                : keyTok.kind === 'number' || keyTok.kind === 'bigint'
+                  ? {
+                      type: 'literal',
+                      value: parseFloat(keyTok.raw.replace(/_/g, '')),
+                      raw: keyTok.raw,
+                      start: keyTok.start,
+                      end: keyTok.end,
+                    }
                   : { type: 'identifier', name: keyTok.raw, start: keyTok.start, end: keyTok.end }
 
             if (this.peek()?.raw === ':') {
@@ -742,499 +619,44 @@ export class JSExpressionParser {
     return args
   }
 
-  private buildTemplateNode(tok: JSToken, tag: JSExprNode | null): JSTemplateNode {
-    const data = tok.tmpl!
-    if (!tag && data.quasis.some((quasi) => quasi.cooked === null)) {
-      throw new JSParseError('Invalid escape sequence in template literal', tok, this.src)
-    }
+  // #endregion
 
-    const expressions: JSExprNode[] = data.exprTokens.map((exprTokens, i) => {
-      const p = new JSExpressionParser(exprTokens, this.opts, this.src)
-      try {
-        return p.parse()
-      } catch (e) {
-        if (e instanceof JSParseError) throw e
-        throw new JSParseError(
-          `Error in template expression #${i + 1}: ${(e as Error).message}`,
-          tok,
-          this.src,
-        )
-      }
-    })
+  // #region Arrow parsing
+
+  private createBindingDelegate(): ParserBindingDelegate {
     return {
-      type: 'template',
-      tag,
-      quasis: data.quasis,
-      expressions,
-      start: tok.start,
-      end: tok.end,
+      opts: this.opts,
+      src: this.src,
+      tokens: this.tokens,
+      position: this.pos,
+      peek: () => this.peek(),
+      advance: () => this.advance(),
+      lastEnd: () => this.lastEnd(),
+      expect: (kind, msg) => this.expect(kind, msg),
+      expectOp: (raw, msg) => this.expectOp(raw, msg),
+      parseAssignmentExpr: () => this.parseAssignmentExpr(),
+      parseSequenceExpr: () => this.parseSequenceExpr(),
+      hasLineTerminatorBetween: (start, end) => this.hasLineTerminatorBetween(start, end),
     }
   }
 
   private isArrowFunctionStart(): boolean {
-    const start = this.peek()
-    if (!start) return false
-
-    if (start.kind === 'identifier') {
-      const arrow = this.tokens[this.pos + 1]
-      return (
-        arrow?.kind === 'op' &&
-        arrow.raw === '=>' &&
-        !this.hasLineTerminatorBetween(start.end, arrow.start)
-      )
-    }
-
-    if (start.kind === 'op' && start.raw === '(') {
-      const closeIndex = this.findMatchingParenIndex(this.pos)
-      if (closeIndex < 0) return false
-
-      const close = this.tokens[closeIndex]
-      const arrow = this.tokens[closeIndex + 1]
-      return (
-        close?.kind === 'op' &&
-        close.raw === ')' &&
-        arrow?.kind === 'op' &&
-        arrow.raw === '=>' &&
-        !this.hasLineTerminatorBetween(close.end, arrow.start)
-      )
-    }
-
-    return false
+    return detectArrowFunctionStart(this.createBindingDelegate())
   }
 
   private parseArrowFunction(): JSArrowFunctionNode {
-    if (this.opts.allowArrowFunctions === false) {
-      throw new JSParseError(
-        'Arrow functions are not enabled in this context',
-        this.peek(),
-        this.src,
-      )
-    }
-
-    const start = this.peek()!
-    let params: JSArrowParameterNode[]
-
-    if (start.kind === 'identifier') {
-      const param = this.bindingIdentifierFromToken(this.advance()!)
-      this.expectOp('=>', 'Expected `=>` after arrow parameter')
-      params = [
-        {
-          type: 'parameter',
-          binding: param,
-          rest: false,
-          start: param.start,
-          end: param.end,
-        },
-      ]
-    } else {
-      params = this.parseArrowParameterList()
-      this.expectOp('=>', 'Expected `=>` after arrow parameters')
-    }
-
-    if (this.peek()?.kind === 'op' && this.peek()!.raw === '{') {
-      throw new JSParseError(
-        'Arrow functions with block bodies are not supported in this context',
-        this.peek(),
-        this.src,
-      )
-    }
-
-    const body = this.parseAssignmentExpr()
-    const node = {
-      type: 'arrow-function',
-      params,
-      body,
-      start: start.start,
-      end: this.lastEnd(),
-    } satisfies JSArrowFunctionNode
-
-    this.validateArrowFunction(node)
-    return node
+    return parseArrowFunctionWithBindings(this.createBindingDelegate())
   }
 
-  private parseArrowParameterList(): JSArrowParameterNode[] {
-    const open = this.expectOp('(')
-    const params: JSArrowParameterNode[] = []
+  // #endregion
 
-    if (this.peek()?.kind === 'op' && this.peek()!.raw === ')') {
-      this.advance()
-      return params
-    }
+  // #region Parser helpers
 
-    for (; ;) {
-      const start = this.peek()
-      if (!start) throw new JSParseError('Unterminated arrow parameter list', open, this.src)
-
-      let rest = false
-      let binding: JSBindingNode
-
-      if (start.kind === 'op' && start.raw === '...') {
-        rest = true
-        this.advance()
-        binding = this.parseBindingPattern()
-      } else {
-        binding = this.parseBindingElement()
-      }
-
-      params.push({
-        type: 'parameter',
-        binding,
-        rest,
-        start: start.start,
-        end: this.lastEnd(),
-      })
-
-      if (rest) break
-      if (this.peek()?.kind !== 'op' || this.peek()!.raw !== ',') break
-      this.advance()
-      if (this.peek()?.kind === 'op' && this.peek()!.raw === ')') break
-    }
-
-    this.expectOp(')', 'Expected `)` after arrow parameters')
-    return params
-  }
-
-  private parseBindingElement(): JSBindingNode {
-    const binding = this.parseBindingPattern()
-    if (this.peek()?.kind === 'op' && this.peek()!.raw === '=') {
-      this.advance()
-      return {
-        type: 'binding-assignment',
-        left: binding,
-        defaultValue: this.parseAssignmentExpr(),
-        start: binding.start,
-        end: this.lastEnd(),
-      } satisfies JSBindingAssignmentNode
-    }
-    return binding
-  }
-
-  private parseBindingPattern(): JSBindingNode {
-    const t = this.peek()
-    if (!t) throw new JSParseError('Unexpected end of arrow parameter list', undefined, this.src)
-
-    if (t.kind === 'identifier') {
-      return this.bindingIdentifierFromToken(this.advance()!)
-    }
-    if (t.kind === 'op' && t.raw === '[') return this.parseBindingArrayPattern()
-    if (t.kind === 'op' && t.raw === '{') return this.parseBindingObjectPattern()
-
-    throw new JSParseError(`Unexpected token '${t.raw}' in arrow parameter list`, t, this.src)
-  }
-
-  private parseBindingArrayPattern(): JSBindingArrayNode {
-    const open = this.expectOp('[')
-    const elements: Array<JSBindingNode | null> = []
-    let rest: JSBindingNode | null = null
-
-    while (this.peek()?.kind !== 'op' || this.peek()!.raw !== ']') {
-      if (!this.peek()) throw new JSParseError('Unterminated array binding pattern', open, this.src)
-      if (this.peek()!.kind === 'op' && this.peek()!.raw === ',') {
-        this.advance()
-        elements.push(null)
-        continue
-      }
-      if (this.peek()!.kind === 'op' && this.peek()!.raw === '...') {
-        this.advance()
-        rest = this.parseBindingPattern()
-        break
-      }
-
-      elements.push(this.parseBindingElement())
-      if (this.peek()?.kind === 'op' && this.peek()!.raw === ',') this.advance()
-      else break
-    }
-
-    this.expectOp(']', 'Expected `]` after array binding pattern')
-    return {
-      type: 'binding-array',
-      elements,
-      rest,
-      start: open.start,
-      end: this.lastEnd(),
-    }
-  }
-
-  private parseBindingObjectPattern(): JSBindingObjectNode {
-    const open = this.expectOp('{')
-    const properties: JSBindingPropertyNode[] = []
-    let rest: JSBindingIdentifierNode | null = null
-
-    while (this.peek()?.kind !== 'op' || this.peek()!.raw !== '}') {
-      if (!this.peek())
-        throw new JSParseError('Unterminated object binding pattern', open, this.src)
-
-      if (this.peek()!.kind === 'op' && this.peek()!.raw === '...') {
-        const spread = this.advance()!
-        rest = this.bindingIdentifierFromToken(
-          this.expect('identifier', 'Expected identifier after object rest operator'),
-        )
-        rest.start = spread.start
-        rest.end = this.lastEnd()
-        break
-      }
-
-      if (this.peek()!.kind === 'op' && this.peek()!.raw === '[') {
-        const lb = this.advance()!
-        const key = this.parseSequenceExpr()
-        this.expectOp(']')
-        this.expectOp(':', 'Expected `:` after computed binding key')
-        const value = this.parseBindingElement()
-        properties.push({
-          type: 'binding-property',
-          key,
-          value,
-          computed: true,
-          shorthand: false,
-          start: lb.start,
-          end: this.lastEnd(),
-        })
-      } else {
-        const keyTok = this.advance()!
-        const key = this.tokenToPropertyKeyNode(keyTok)
-
-        if (this.peek()?.kind === 'op' && this.peek()!.raw === ':') {
-          this.advance()
-          properties.push({
-            type: 'binding-property',
-            key,
-            value: this.parseBindingElement(),
-            computed: false,
-            shorthand: false,
-            start: keyTok.start,
-            end: this.lastEnd(),
-          })
-        } else {
-          if (keyTok.kind !== 'identifier') {
-            throw new JSParseError(
-              `Expected ':' after binding key '${keyTok.raw}'`,
-              keyTok,
-              this.src,
-            )
-          }
-
-          const value = this.bindingIdentifierFromToken(keyTok)
-          let binding: JSBindingNode = value
-
-          if (this.peek()?.kind === 'op' && this.peek()!.raw === '=') {
-            this.advance()
-            binding = {
-              type: 'binding-assignment',
-              left: value,
-              defaultValue: this.parseAssignmentExpr(),
-              start: value.start,
-              end: this.lastEnd(),
-            } satisfies JSBindingAssignmentNode
-          }
-
-          properties.push({
-            type: 'binding-property',
-            key,
-            value: binding,
-            computed: false,
-            shorthand: true,
-            start: keyTok.start,
-            end: this.lastEnd(),
-          })
-        }
-      }
-
-      if (this.peek()?.kind === 'op' && this.peek()!.raw === ',') this.advance()
-      else break
-    }
-
-    this.expectOp('}', 'Expected `}` after object binding pattern')
-    return {
-      type: 'binding-object',
-      properties,
-      rest,
-      start: open.start,
-      end: this.lastEnd(),
-    }
-  }
-
-  private bindingIdentifierFromToken(token: JSToken): JSBindingIdentifierNode {
-    if (token.kind !== 'identifier') {
-      throw new JSParseError('Expected parameter name', token, this.src)
-    }
-    if (FORBIDDEN_ARROW_BINDING_IDENTIFIERS.has(token.raw)) {
-      throw new JSParseError(`'${token.raw}' is not allowed in arrow parameters`, token, this.src)
-    }
-    return { type: 'binding-identifier', name: token.raw, start: token.start, end: token.end }
-  }
-
-  private tokenToPropertyKeyNode(token: JSToken): JSExprNode {
-    if (token.kind === 'string') {
-      return {
-        type: 'literal',
-        value: parseStringValue(token.raw),
-        raw: token.raw,
-        start: token.start,
-        end: token.end,
-      }
-    }
-    if (token.kind === 'number' || token.kind === 'bigint') {
-      return {
-        type: 'literal',
-        value: parseFloat(token.raw.replace(/_/g, '').replace(/n$/, '')),
-        raw: token.raw,
-        start: token.start,
-        end: token.end,
-      }
-    }
-    return { type: 'identifier', name: token.raw, start: token.start, end: token.end }
-  }
-
-  private validateArrowFunction(node: JSArrowFunctionNode): void {
-    const boundNames = new Set<string>()
-
-    for (const param of node.params) {
-      for (const name of this.collectBoundNames(param.binding)) {
-        if (boundNames.has(name)) {
-          throw new JSParseError(
-            `Duplicate parameter name '${name}' in arrow function`,
-            undefined,
-            this.src,
-          )
-        }
-        boundNames.add(name)
-      }
-      this.validateBindingArrowReferences(param.binding)
-    }
-
-    this.validateArrowReferences(node.body)
-  }
-
-  private collectBoundNames(binding: JSBindingNode): string[] {
-    switch (binding.type) {
-      case 'binding-identifier':
-        return [binding.name]
-      case 'binding-assignment':
-        return this.collectBoundNames(binding.left)
-      case 'binding-array': {
-        const names: string[] = []
-        for (const element of binding.elements) {
-          if (element) names.push(...this.collectBoundNames(element))
-        }
-        if (binding.rest) names.push(...this.collectBoundNames(binding.rest))
-        return names
-      }
-      case 'binding-object': {
-        const names: string[] = []
-        for (const prop of binding.properties) names.push(...this.collectBoundNames(prop.value))
-        if (binding.rest) names.push(binding.rest.name)
-        return names
-      }
-    }
-  }
-
-  private validateBindingArrowReferences(binding: JSBindingNode): void {
-    switch (binding.type) {
-      case 'binding-identifier':
-        return
-      case 'binding-assignment':
-        this.validateBindingArrowReferences(binding.left)
-        this.validateArrowReferences(binding.defaultValue)
-        return
-      case 'binding-array':
-        for (const element of binding.elements) {
-          if (element) this.validateBindingArrowReferences(element)
-        }
-        if (binding.rest) this.validateBindingArrowReferences(binding.rest)
-        return
-      case 'binding-object':
-        for (const prop of binding.properties) {
-          if (prop.computed) this.validateArrowReferences(prop.key)
-          this.validateBindingArrowReferences(prop.value)
-        }
-        return
-    }
-  }
-
-  private validateArrowReferences(node: JSExprNode): void {
-    switch (node.type) {
-      case 'literal':
-      case 'regex':
-      case 'topic':
-        return
-      case 'identifier':
-        if (FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS.has(node.name)) {
-          throw new JSParseError(
-            `Arrow functions do not support '${node.name}' in this context`,
-            undefined,
-            this.src,
-          )
-        }
-        return
-      case 'arrow-function':
-        return
-      case 'unary':
-        this.validateArrowReferences(node.operand)
-        return
-      case 'binary':
-      case 'logical':
-        this.validateArrowReferences(node.left)
-        this.validateArrowReferences(node.right)
-        return
-      case 'conditional':
-        this.validateArrowReferences(node.test)
-        this.validateArrowReferences(node.consequent)
-        this.validateArrowReferences(node.alternate)
-        return
-      case 'member':
-        this.validateArrowReferences(node.object)
-        if (node.computed) this.validateArrowReferences(node.property)
-        return
-      case 'call':
-        this.validateArrowReferences(node.callee)
-        for (const arg of node.args) this.validateArrowReferences(arg)
-        return
-      case 'array':
-        for (const element of node.elements) {
-          if (element) this.validateArrowReferences(element)
-        }
-        return
-      case 'object':
-        for (const prop of node.props) {
-          if (prop.type === 'spread') {
-            this.validateArrowReferences(prop.argument)
-          } else {
-            if (prop.computed) this.validateArrowReferences(prop.key)
-            this.validateArrowReferences(prop.value)
-          }
-        }
-        return
-      case 'spread':
-        this.validateArrowReferences(node.argument)
-        return
-      case 'template':
-        if (node.tag) this.validateArrowReferences(node.tag)
-        for (const expression of node.expressions) this.validateArrowReferences(expression)
-        return
-      case 'sequence':
-        for (const expression of node.expressions) this.validateArrowReferences(expression)
-        return
-      case 'pipeline':
-        this.validateArrowReferences(node.left)
-        this.validateArrowReferences(node.right)
-        return
-    }
-  }
-
-  private findMatchingParenIndex(startIndex: number): number {
-    let depth = 0
-
-    for (let index = startIndex; index < this.tokens.length; index += 1) {
-      const token = this.tokens[index]
-      if (token.kind !== 'op') continue
-      if (token.raw === '(') depth += 1
-      else if (token.raw === ')') {
-        depth -= 1
-        if (depth === 0) return index
-      }
-    }
-
-    return -1
+  private buildTemplateNode(tok: JSToken, tag: JSExprNode | null): JSTemplateNode {
+    return buildTemplateAstNode(tok, tag, this.src, (exprTokens) => {
+      const parser = new JSExpressionParser(exprTokens, this.opts, this.src)
+      return parser.parse()
+    })
   }
 
   private hasLineTerminatorBetween(start: number | undefined, end: number | undefined): boolean {
@@ -1250,190 +672,6 @@ export class JSExpressionParser {
   }
   private lastEnd(): number {
     return this.tokens[this.pos - 1]?.end ?? 0
-  }
-
-  private assertValidLogicalMixing(
-    operator: '&&' | '||' | '??',
-    left: JSExprNode,
-    right: JSExprNode,
-    token: JSToken,
-  ): void {
-    const mixesNullishWithBoolean =
-      operator === '??'
-        ? this.isUnparenthesizedShortCircuit(left) || this.isUnparenthesizedShortCircuit(right)
-        : this.isUnparenthesizedNullish(left) || this.isUnparenthesizedNullish(right)
-
-    if (mixesNullishWithBoolean) {
-      throw new JSParseError(
-        "Cannot mix '??' with '&&' or '||' without parentheses",
-        token,
-        this.src,
-      )
-    }
-  }
-
-  private isUnparenthesizedNullish(node: JSExprNode): boolean {
-    return !this.parenthesizedNodes.has(node) && node.type === 'logical' && node.operator === '??'
-  }
-
-  private isUnparenthesizedShortCircuit(node: JSExprNode): boolean {
-    return (
-      !this.parenthesizedNodes.has(node) &&
-      node.type === 'logical' &&
-      (node.operator === '&&' || node.operator === '||')
-    )
-  }
-
-  private validateTopicUsage(node: JSExprNode): void {
-    this.validateExpressionTopicUsage(node, false)
-  }
-
-  private validateExpressionTopicUsage(node: JSExprNode, allowTopic: boolean): number {
-    switch (node.type) {
-      case 'literal':
-      case 'regex':
-      case 'identifier':
-        return 0
-
-      case 'topic':
-        if (!allowTopic) {
-          throw new JSParseError(
-            "Topic reference '%' is only allowed inside a pipeline body",
-            undefined,
-            this.src,
-          )
-        }
-        return 1
-
-      case 'arrow-function': {
-        let topicCount = 0
-        for (const param of node.params) {
-          topicCount += this.validateBindingTopicUsage(param.binding, allowTopic)
-        }
-        topicCount += this.validateExpressionTopicUsage(node.body, allowTopic)
-        return topicCount
-      }
-
-      case 'unary':
-        return this.validateExpressionTopicUsage(node.operand, allowTopic)
-
-      case 'binary':
-      case 'logical':
-        return (
-          this.validateExpressionTopicUsage(node.left, allowTopic) +
-          this.validateExpressionTopicUsage(node.right, allowTopic)
-        )
-
-      case 'conditional':
-        return (
-          this.validateExpressionTopicUsage(node.test, allowTopic) +
-          this.validateExpressionTopicUsage(node.consequent, allowTopic) +
-          this.validateExpressionTopicUsage(node.alternate, allowTopic)
-        )
-
-      case 'member':
-        return (
-          this.validateExpressionTopicUsage(node.object, allowTopic) +
-          this.validateExpressionTopicUsage(node.property, allowTopic)
-        )
-
-      case 'call': {
-        let topicCount = this.validateExpressionTopicUsage(node.callee, allowTopic)
-        for (const arg of node.args)
-          topicCount += this.validateExpressionTopicUsage(arg, allowTopic)
-        return topicCount
-      }
-
-      case 'array': {
-        let topicCount = 0
-        for (const element of node.elements) {
-          if (element !== null) topicCount += this.validateExpressionTopicUsage(element, allowTopic)
-        }
-        return topicCount
-      }
-
-      case 'object': {
-        let topicCount = 0
-        for (const prop of node.props) {
-          topicCount +=
-            prop.type === 'spread'
-              ? this.validateExpressionTopicUsage(prop.argument, allowTopic)
-              : (prop.computed ? this.validateExpressionTopicUsage(prop.key, allowTopic) : 0) +
-              this.validateExpressionTopicUsage(prop.value, allowTopic)
-        }
-        return topicCount
-      }
-
-      case 'spread':
-        return this.validateExpressionTopicUsage(node.argument, allowTopic)
-
-      case 'template': {
-        let topicCount = node.tag ? this.validateExpressionTopicUsage(node.tag, allowTopic) : 0
-        for (const expression of node.expressions) {
-          topicCount += this.validateExpressionTopicUsage(expression, allowTopic)
-        }
-        return topicCount
-      }
-
-      case 'sequence': {
-        let topicCount = 0
-        for (const expression of node.expressions) {
-          topicCount += this.validateExpressionTopicUsage(expression, allowTopic)
-        }
-        return topicCount
-      }
-
-      case 'pipeline': {
-        const outerTopicCount = this.validateExpressionTopicUsage(node.left, allowTopic)
-        this.validatePipeBodyTopicUsage(node.right)
-        return outerTopicCount
-      }
-    }
-  }
-
-  private validateBindingTopicUsage(binding: JSBindingNode, allowTopic: boolean): number {
-    switch (binding.type) {
-      case 'binding-identifier':
-        return 0
-      case 'binding-assignment':
-        return (
-          this.validateBindingTopicUsage(binding.left, allowTopic) +
-          this.validateExpressionTopicUsage(binding.defaultValue, allowTopic)
-        )
-      case 'binding-array': {
-        let topicCount = 0
-        for (const element of binding.elements) {
-          if (element) topicCount += this.validateBindingTopicUsage(element, allowTopic)
-        }
-        if (binding.rest) topicCount += this.validateBindingTopicUsage(binding.rest, allowTopic)
-        return topicCount
-      }
-      case 'binding-object': {
-        let topicCount = 0
-        for (const prop of binding.properties) {
-          if (prop.computed) topicCount += this.validateExpressionTopicUsage(prop.key, allowTopic)
-          topicCount += this.validateBindingTopicUsage(prop.value, allowTopic)
-        }
-        return topicCount
-      }
-    }
-  }
-
-  private validatePipeBodyTopicUsage(node: JSExprNode): void {
-    if (
-      (node.type === 'conditional' || node.type === 'arrow-function') &&
-      !this.parenthesizedNodes.has(node)
-    ) {
-      throw new JSParseError(
-        `Hack pipe body cannot be an unparenthesized ${node.type === 'conditional' ? 'conditional expression' : 'arrow function'}`,
-        undefined,
-        this.src,
-      )
-    }
-
-    if (this.validateExpressionTopicUsage(node, true) === 0) {
-      throw new JSParseError("Hack pipe body must reference '%' at least once", undefined, this.src)
-    }
   }
 
   private expect(kind: JSTokenKind, msg?: string): JSToken {
@@ -1457,6 +695,8 @@ export class JSExpressionParser {
       )
     return t
   }
+
+  // #endregion
 }
 
 // #endregion

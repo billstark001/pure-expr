@@ -1,4 +1,8 @@
-import type { JSCallable, JSCallPermissionContext, JSCallPermissionPolicy } from './evaluator.js'
+import type {
+  JSCallable,
+  JSCallPermissionContext,
+  JSCallPermissionPolicy,
+} from './evaluator/types.js'
 
 // #region Internal helpers
 
