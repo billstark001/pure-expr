@@ -64,6 +64,63 @@ describe('public API', () => {
     })
   })
 
+  test('parseExpression omits parser offsets and can emit ESTree locations', () => {
+    const unlocated = parseExpression('count + 1')
+    const visit = (value: unknown): void => {
+      if (!value || typeof value !== 'object') return
+      expect(value).not.toHaveProperty('start')
+      expect(value).not.toHaveProperty('end')
+      if (Array.isArray(value)) value.forEach(visit)
+      else Object.values(value).forEach(visit)
+    }
+    visit(unlocated)
+    expect(unlocated).not.toHaveProperty('loc')
+
+    const located = parseExpression('count +\n value', {
+      locations: { startLine: 4, startColumn: 7, source: 'example.expr' },
+    })
+    expect(located).toMatchObject({
+      loc: {
+        source: 'example.expr',
+        start: { line: 4, column: 7 },
+        end: { line: 5, column: 6 },
+      },
+    })
+    if (located.type !== 'BinaryExpression') throw new Error('Expected BinaryExpression')
+    expect(located.left.loc).toEqual({
+      source: 'example.expr',
+      start: { line: 4, column: 7 },
+      end: { line: 4, column: 12 },
+    })
+    expect(located.right.loc).toEqual({
+      source: 'example.expr',
+      start: { line: 5, column: 1 },
+      end: { line: 5, column: 6 },
+    })
+  })
+
+  test('parseExpression locates template elements and handles CRLF', () => {
+    const template = parseExpression('`a${\r\n value}b`', { locations: true })
+    expect(template).toMatchObject({
+      type: 'TemplateLiteral',
+      loc: { start: { line: 1, column: 0 }, end: { line: 2, column: 9 } },
+      quasis: [
+        { loc: { start: { line: 1, column: 1 }, end: { line: 1, column: 2 } } },
+        { loc: { start: { line: 2, column: 7 }, end: { line: 2, column: 8 } } },
+      ],
+      expressions: [{ loc: { start: { line: 2, column: 1 }, end: { line: 2, column: 6 } } }],
+    })
+  })
+
+  test('parseExpression rejects invalid location origins', () => {
+    expect(() => parseExpression('x', { locations: { startLine: 0 } })).toThrow(
+      'locations.startLine',
+    )
+    expect(() => parseExpression('x', { locations: { startColumn: -1 } })).toThrow(
+      'locations.startColumn',
+    )
+  })
+
   test('compileExpression supports reusable evaluation', () => {
     const compiled = compileExpression('count + 1')
 

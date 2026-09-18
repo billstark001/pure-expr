@@ -9,7 +9,7 @@ import type {
   Identifier,
   ObjectPattern,
   RestElement,
-} from '../node-types.js'
+} from './node-types.js'
 import { JSParseError, type JSParserOptions } from './errors.js'
 import { FORBIDDEN_ARROW_BINDING_IDENTIFIERS } from './grammar.js'
 import { parseStringValue } from './shared.js'

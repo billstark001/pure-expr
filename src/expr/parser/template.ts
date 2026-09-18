@@ -1,5 +1,5 @@
 import type { JSToken } from '../lexer/types.js'
-import type { ExpressionNode, TemplateLiteral } from '../node-types.js'
+import type { ExpressionNode, TemplateLiteral } from './node-types.js'
 import { JSParseError } from './errors.js'
 
 export function buildTemplateAstNode(
@@ -28,11 +28,16 @@ export function buildTemplateAstNode(
 
   return {
     type: 'TemplateLiteral',
-    quasis: data.quasis.map((quasi, index) => ({
-      type: 'TemplateElement',
-      tail: index === data.quasis.length - 1,
-      value: quasi,
-    })),
+    quasis: data.quasis.map((quasi, index) => {
+      const range = data.quasiRanges?.[index] ?? { start: tok.start, end: tok.end }
+      return {
+        type: 'TemplateElement',
+        tail: index === data.quasis.length - 1,
+        value: quasi,
+        start: range.start,
+        end: range.end,
+      }
+    }),
     expressions,
     start: tok.start,
     end: tok.end,

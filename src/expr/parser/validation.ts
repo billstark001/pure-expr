@@ -4,7 +4,7 @@ import type {
   BindingPattern,
   ExpressionNode,
   Property,
-} from '../node-types.js'
+} from './node-types.js'
 import { JSParseError } from './errors.js'
 import { FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS } from './grammar.js'
 

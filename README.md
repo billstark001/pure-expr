@@ -88,7 +88,7 @@ Useful expression APIs:
 - tokenizeExpression(source): inspect lexer output
 - parseExpression(source, options): inspect the restricted ESTree AST directly
 
-The expression AST uses standard ESTree nodes wherever the supported syntax has one, including `BinaryExpression`, `ChainExpression`, `ArrowFunctionExpression`, and the standard binding patterns. Hack pipelines are exposed as the explicit `PipelineExpression` and `TopicReference` extensions. Nodes retain `start` and `end` offsets, while ESTree `loc` remains optional. The package intentionally does not accept or emit the previous lowercase custom AST format.
+The expression AST uses standard ESTree nodes wherever the supported syntax has one, including `BinaryExpression`, `ChainExpression`, `ArrowFunctionExpression`, and the standard binding patterns. Hack pipelines are exposed as the explicit `PipelineExpression` and `TopicReference` extensions. Parser offsets are internal and are not emitted. Pass `locations: true` to add standard ESTree `loc` fields, or pass `locations: { startLine, startColumn, source }` to place an expression inside a larger source file. ESTree lines are one-based and columns are zero-based. The package intentionally does not accept or emit the previous lowercase custom AST format.
 
 Useful expression options:
 
@@ -99,6 +99,7 @@ Useful expression options:
 - allowRegexLiterals: disable regex literals when set to false
 - allowTemplateLiterals: enable or disable untagged template literals
 - allowTaggedTemplates: enable or disable tagged template literals independently
+- locations: emit ESTree `loc` fields; an object can set the first source character's `startLine` (default 1), `startColumn` (default 0), and optional `source` name
 - functionMode: choose the function-evaluation backend; `default` uses the evaluator-backed closure path and `performance` uses a cached compiled backend for pure-expr-generated arrow functions
 - maxSourceLength: reject overly long expression source strings during parsing
 - maxAstNodes: reject expressions whose AST exceeds a node-count budget
@@ -113,6 +114,8 @@ Useful expression options:
 - isCallableAllowed: customize which functions, methods, and template tags may execute
 - propertyAccess: customize every property and method read; use the exported ownPropertyAccess helper to reject inherited properties
 - taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
+
+`rootContextMode` controls validation and copying, not JavaScript mutability. The evaluator itself does not assign to the caller's root context: per-call overrides and arrow-parameter bindings use internal objects. However, context values are passed by reference in every mode except `copy-plain-data-to-null-prototype`, so an allowed host function can still mutate nested objects. Use that deep-copy mode for plain data isolation; no mode can make arbitrary host objects or functions deeply immutable.
 
 Compatibility example:
 

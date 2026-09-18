@@ -60,7 +60,6 @@ export type {
   Property,
   RestElement,
   SequenceExpression,
-  SourceOffsets,
   SpreadElement,
   TaggedTemplateExpression,
   TemplateElement,
@@ -68,7 +67,12 @@ export type {
   TopicReference,
   UnaryExpression,
 } from './node-types.js'
-export { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
+export {
+  JSExpressionParser,
+  type JSLocationOptions,
+  JSParseError,
+  type JSParserOptions,
+} from './parser.js'
 
 export interface CompiledExpression {
   readonly source: string

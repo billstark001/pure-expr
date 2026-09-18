@@ -212,6 +212,7 @@ export class JSLexer {
   private lexTemplate(): JSToken {
     const start = this.pos++
     const quasis: TemplateQuasi[] = []
+    const quasiRanges: Array<{ start: number; end: number }> = []
     const exprTokens: JSToken[][] = []
     let quasiStart = this.pos
 
@@ -224,14 +225,20 @@ export class JSLexer {
 
       if (code === CC_BACKTICK) {
         const raw = this.src.slice(quasiStart, this.pos)
+        quasiRanges.push({ start: quasiStart, end: this.pos })
         this.pos++
         quasis.push({ raw, cooked: cookTemplate(raw) })
         const value = this.src.slice(start, this.pos)
-        return this.makeToken('template', value, start, this.pos, { quasis, exprTokens })
+        return this.makeToken('template', value, start, this.pos, {
+          quasis,
+          quasiRanges,
+          exprTokens,
+        })
       }
 
       if (code === CC_DOLLAR && this.src.charCodeAt(this.pos + 1) === CC_LEFT_BRACE) {
         const raw = this.src.slice(quasiStart, this.pos)
+        quasiRanges.push({ start: quasiStart, end: this.pos })
         quasis.push({ raw, cooked: cookTemplate(raw) })
         this.pos += 2
         exprTokens.push(this.lexTemplateExpr())

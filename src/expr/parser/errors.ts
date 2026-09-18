@@ -1,7 +1,19 @@
 import type { JSToken } from '../lexer/types.js'
 
+/** Controls ESTree `loc` generation and its source origin. */
+export interface JSLocationOptions {
+  /** One-based line containing the expression's first character. Defaults to 1. */
+  startLine?: number
+  /** Zero-based column containing the expression's first character. Defaults to 0. */
+  startColumn?: number
+  /** Optional source name copied to every generated `loc`. */
+  source?: string | null
+}
+
 /** Parser feature flags for the expression grammar. */
 export interface JSParserOptions {
+  /** Add ESTree `loc` fields, optionally with a custom source origin. */
+  locations?: boolean | JSLocationOptions
   allowAwait?: boolean
   allowArrowFunctions?: boolean
   allowIn?: boolean

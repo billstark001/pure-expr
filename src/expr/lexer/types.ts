@@ -45,6 +45,8 @@ export interface JSToken {
   /** Template segments and recursively tokenized expressions. */
   tmpl?: {
     quasis: TemplateQuasi[]
+    /** Parser metadata for locating each quasi in the original source. */
+    quasiRanges?: Array<{ start: number; end: number }>
     exprTokens: JSToken[][]
   }
 }

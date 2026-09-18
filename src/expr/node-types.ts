@@ -26,142 +26,116 @@ import type {
   UnaryExpression as ESTreeUnaryExpression,
 } from 'estree'
 
-/** Source offsets retained in addition to ESTree's optional `loc` and `range`. */
-export interface SourceOffsets {
-  start?: number
-  end?: number
-}
+/** Any standard ESTree node (including its optional `loc` and `range` fields). */
+export type AstNode = BaseNode
 
-export type AstNode = BaseNode & SourceOffsets
+export type Literal = ESTreeLiteral
 
-export type Literal = ESTreeLiteral & SourceOffsets
+export interface Identifier extends ESTreeIdentifier {}
 
-export interface Identifier extends ESTreeIdentifier, SourceOffsets {}
-
-export interface TopicReference extends BaseNode, SourceOffsets {
+export interface TopicReference extends BaseNode {
   type: 'TopicReference'
 }
 
-export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument'>, SourceOffsets {
+export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument'> {
   argument: ExpressionNode
 }
 
-export interface AwaitExpression extends Omit<ESTreeAwaitExpression, 'argument'>, SourceOffsets {
+export interface AwaitExpression extends Omit<ESTreeAwaitExpression, 'argument'> {
   argument: ExpressionNode
 }
 
-export interface BinaryExpression
-  extends Omit<ESTreeBinaryExpression, 'left' | 'right'>,
-    SourceOffsets {
+export interface BinaryExpression extends Omit<ESTreeBinaryExpression, 'left' | 'right'> {
   left: ExpressionNode
   right: ExpressionNode
 }
 
-export interface LogicalExpression
-  extends Omit<ESTreeLogicalExpression, 'left' | 'right'>,
-    SourceOffsets {
+export interface LogicalExpression extends Omit<ESTreeLogicalExpression, 'left' | 'right'> {
   left: ExpressionNode
   right: ExpressionNode
 }
 
 export interface ConditionalExpression
-  extends Omit<ESTreeConditionalExpression, 'test' | 'consequent' | 'alternate'>,
-    SourceOffsets {
+  extends Omit<ESTreeConditionalExpression, 'test' | 'consequent' | 'alternate'> {
   test: ExpressionNode
   consequent: ExpressionNode
   alternate: ExpressionNode
 }
 
-export interface MemberExpression
-  extends Omit<ESTreeMemberExpression, 'object' | 'property'>,
-    SourceOffsets {
+export interface MemberExpression extends Omit<ESTreeMemberExpression, 'object' | 'property'> {
   object: ExpressionNode
   property: ExpressionNode
 }
 
-export interface CallExpression
-  extends Omit<ESTreeCallExpression, 'callee' | 'arguments'>,
-    SourceOffsets {
+export interface CallExpression extends Omit<ESTreeCallExpression, 'callee' | 'arguments'> {
   type: 'CallExpression'
   callee: ExpressionNode
   arguments: Array<ExpressionNode | SpreadElement>
   optional: boolean
 }
 
-export interface ChainExpression extends Omit<ESTreeChainExpression, 'expression'>, SourceOffsets {
+export interface ChainExpression extends Omit<ESTreeChainExpression, 'expression'> {
   expression: MemberExpression | CallExpression
 }
 
-export interface ArrayExpression extends Omit<ESTreeArrayExpression, 'elements'>, SourceOffsets {
+export interface ArrayExpression extends Omit<ESTreeArrayExpression, 'elements'> {
   elements: Array<ExpressionNode | SpreadElement | null>
 }
 
-export interface Property
-  extends Omit<ESTreeProperty, 'key' | 'value' | 'kind' | 'method'>,
-    SourceOffsets {
+export interface Property extends Omit<ESTreeProperty, 'key' | 'value' | 'kind' | 'method'> {
   key: ExpressionNode
   value: ExpressionNode
   kind: 'init'
   method: false
 }
 
-export interface ObjectExpression
-  extends Omit<ESTreeObjectExpression, 'properties'>,
-    SourceOffsets {
+export interface ObjectExpression extends Omit<ESTreeObjectExpression, 'properties'> {
   properties: Array<Property | SpreadElement>
 }
 
-export interface SpreadElement extends Omit<ESTreeSpreadElement, 'argument'>, SourceOffsets {
+export interface SpreadElement extends Omit<ESTreeSpreadElement, 'argument'> {
   argument: ExpressionNode
 }
 
-export interface SequenceExpression
-  extends Omit<ESTreeSequenceExpression, 'expressions'>,
-    SourceOffsets {
+export interface SequenceExpression extends Omit<ESTreeSequenceExpression, 'expressions'> {
   expressions: ExpressionNode[]
 }
 
-export interface TemplateElement extends ESTreeTemplateElement, SourceOffsets {}
+export interface TemplateElement extends ESTreeTemplateElement {}
 
-export interface TemplateLiteral
-  extends Omit<ESTreeTemplateLiteral, 'quasis' | 'expressions'>,
-    SourceOffsets {
+export interface TemplateLiteral extends Omit<ESTreeTemplateLiteral, 'quasis' | 'expressions'> {
   quasis: TemplateElement[]
   expressions: ExpressionNode[]
 }
 
 export interface TaggedTemplateExpression
-  extends Omit<ESTreeTaggedTemplateExpression, 'tag' | 'quasi'>,
-    SourceOffsets {
+  extends Omit<ESTreeTaggedTemplateExpression, 'tag' | 'quasi'> {
   tag: ExpressionNode
   quasi: TemplateLiteral
 }
 
-export interface AssignmentPattern
-  extends Omit<ESTreeAssignmentPattern, 'left' | 'right'>,
-    SourceOffsets {
+export interface AssignmentPattern extends Omit<ESTreeAssignmentPattern, 'left' | 'right'> {
   left: BindingPattern
   right: ExpressionNode
 }
 
-export interface RestElement extends Omit<ESTreeRestElement, 'argument'>, SourceOffsets {
+export interface RestElement extends Omit<ESTreeRestElement, 'argument'> {
   argument: BindingPattern
 }
 
-export interface ArrayPattern extends Omit<ESTreeArrayPattern, 'elements'>, SourceOffsets {
+export interface ArrayPattern extends Omit<ESTreeArrayPattern, 'elements'> {
   elements: Array<BindingPattern | null>
 }
 
 export interface AssignmentProperty
-  extends Omit<ESTreeAssignmentProperty, 'key' | 'value' | 'kind' | 'method'>,
-    SourceOffsets {
+  extends Omit<ESTreeAssignmentProperty, 'key' | 'value' | 'kind' | 'method'> {
   key: ExpressionNode
   value: BindingPattern
   kind: 'init'
   method: false
 }
 
-export interface ObjectPattern extends Omit<ESTreeObjectPattern, 'properties'>, SourceOffsets {
+export interface ObjectPattern extends Omit<ESTreeObjectPattern, 'properties'> {
   properties: Array<AssignmentProperty | RestElement>
 }
 
@@ -173,8 +147,7 @@ export type BindingPattern =
   | ObjectPattern
 
 export interface ArrowFunctionExpression
-  extends Omit<ESTreeArrowFunctionExpression, 'params' | 'body'>,
-    SourceOffsets {
+  extends Omit<ESTreeArrowFunctionExpression, 'params' | 'body'> {
   params: BindingPattern[]
   body: ExpressionNode
   expression: true
@@ -183,7 +156,7 @@ export interface ArrowFunctionExpression
 }
 
 /** Explicit ESTree extension for Hack-style pipelines. */
-export interface PipelineExpression extends BaseNode, SourceOffsets {
+export interface PipelineExpression extends BaseNode {
   type: 'PipelineExpression'
   left: ExpressionNode
   right: ExpressionNode

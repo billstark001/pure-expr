@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Added optional ESTree `loc` generation with configurable starting line, starting column, and source name.
 - Added injectable `propertyAccess` evaluation policies and exported `inheritedPropertyAccess` and `ownPropertyAccess` policy helpers.
 - Added `ChainExpression` evaluation with JavaScript-compatible optional-chain short-circuit propagation.
 - Added configurable lexer number policies, ordered custom lexer rules, optional raw source preservation, and a public lexer position.
@@ -15,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Public expression node types now derive from ESTree without exposing the parser's internal `start` and `end` offsets.
 - Replaced the public custom AST with a restricted ESTree representation based on `@types/estree`. Hack pipelines remain explicit `PipelineExpression` and `TopicReference` extensions.
 - Represented `undefined` as an ESTree `Identifier`, split tagged templates into `TaggedTemplateExpression` and `TemplateLiteral`, and represented arrow parameters with standard ESTree patterns.
 - Arrow-function calls now share execution-step and call-depth budgets with their originating evaluation.

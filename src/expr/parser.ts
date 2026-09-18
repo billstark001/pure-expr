@@ -1,4 +1,5 @@
 import type { JSToken, JSTokenKind } from './lexer/index.js'
+import type { ExpressionNode as PublicExpressionNode } from './node-types.js'
 import type {
   ArrowFunctionExpression,
   BinaryExpression,
@@ -16,13 +17,13 @@ import type {
   TemplateLiteral,
   TopicReference,
   UnaryExpression,
-} from './node-types.js'
+} from './parser/node-types.js'
 import {
   isArrowFunctionStart as detectArrowFunctionStart,
   type ParserBindingDelegate,
   parseArrowFunction as parseArrowFunctionWithBindings,
 } from './parser/bindings.js'
-import { JSParseError, type JSParserOptions } from './parser/errors.js'
+import { type JSLocationOptions, JSParseError, type JSParserOptions } from './parser/errors.js'
 import {
   FORBIDDEN_ASSIGNMENT_OPERATORS,
   FORBIDDEN_PREFIX_IDENTIFIERS,
@@ -34,7 +35,7 @@ import { parseStringValue } from './parser/shared.js'
 import { buildTemplateAstNode } from './parser/template.js'
 import { assertValidLogicalMixing, validateTopicUsage } from './parser/validation.js'
 
-export type { JSParserOptions } from './parser/errors.js'
+export type { JSLocationOptions, JSParserOptions } from './parser/errors.js'
 export { JSParseError } from './parser/errors.js'
 
 // #region Public parser
@@ -55,7 +56,11 @@ export class JSExpressionParser {
 
   // #region Entry points
 
-  parse(): ExpressionNode {
+  parse(): PublicExpressionNode {
+    return finalizeAst(this.parseInternal(), this.src, this.opts.locations)
+  }
+
+  private parseInternal(): ExpressionNode {
     if (this.tokens.length === 0) throw new JSParseError('Empty expression')
     const node = this.parseSequenceExpr()
     if (this.pos < this.tokens.length) {
@@ -715,7 +720,7 @@ export class JSExpressionParser {
   private buildTemplateNode(tok: JSToken, tagged: boolean): TemplateLiteral {
     return buildTemplateAstNode(tok, tagged, this.src, (exprTokens) => {
       const parser = new JSExpressionParser(exprTokens, this.opts, this.src)
-      return parser.parse()
+      return parser.parseInternal()
     })
   }
 
@@ -757,6 +762,81 @@ export class JSExpressionParser {
   }
 
   // #endregion
+}
+
+function finalizeAst(
+  ast: ExpressionNode,
+  source: string,
+  locations: JSParserOptions['locations'],
+): PublicExpressionNode {
+  const locationResolver = locations ? createLocationResolver(source, locations) : undefined
+
+  const visit = (node: ExpressionNode): Record<string, unknown> => {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'start' || key === 'end') continue
+      if (Array.isArray(value)) {
+        result[key] = value.map((item) => (isInternalNode(item) ? visit(item) : item))
+      } else {
+        result[key] = isInternalNode(value) ? visit(value) : value
+      }
+    }
+    if (locationResolver) result.loc = locationResolver(node.start, node.end)
+    return result
+  }
+
+  return visit(ast) as unknown as PublicExpressionNode
+}
+
+function isInternalNode(value: unknown): value is ExpressionNode {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { type?: unknown }).type === 'string' &&
+    typeof (value as { start?: unknown }).start === 'number' &&
+    typeof (value as { end?: unknown }).end === 'number'
+  )
+}
+
+function createLocationResolver(source: string, options: true | JSLocationOptions) {
+  const startLine = options === true ? 1 : (options.startLine ?? 1)
+  const startColumn = options === true ? 0 : (options.startColumn ?? 0)
+  const sourceName = options === true ? undefined : options.source
+  if (!Number.isInteger(startLine) || startLine < 1) {
+    throw new TypeError('locations.startLine must be an integer greater than or equal to 1')
+  }
+  if (!Number.isInteger(startColumn) || startColumn < 0) {
+    throw new TypeError('locations.startColumn must be a non-negative integer')
+  }
+  const lineStarts = [0]
+
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index)
+    if (code === 13 && source.charCodeAt(index + 1) === 10) index += 1
+    if (code === 10 || code === 13 || code === 0x2028 || code === 0x2029) {
+      lineStarts.push(index + 1)
+    }
+  }
+
+  const positionAt = (offset: number) => {
+    let low = 0
+    let high = lineStarts.length
+    while (low + 1 < high) {
+      const middle = (low + high) >>> 1
+      if (lineStarts[middle] <= offset) low = middle
+      else high = middle
+    }
+    return {
+      line: startLine + low,
+      column: offset - lineStarts[low] + (low === 0 ? startColumn : 0),
+    }
+  }
+
+  return (start: number, end: number) => ({
+    ...(sourceName !== undefined ? { source: sourceName } : {}),
+    start: positionAt(start),
+    end: positionAt(end),
+  })
 }
 
 function propertyKeyFromToken(token: JSToken): ExpressionNode {
