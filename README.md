@@ -5,7 +5,7 @@ pure-expr is an ESM-first TypeScript library for two related jobs:
 - parsing and evaluating small JavaScript-like expressions against a readonly scope
 - parsing and rendering text templates with {{ expression }} placeholders
 
-It also exports the lower-level lexer, parser, evaluator and AST types.
+It also exports the lower-level lexer, parser, evaluator and restricted ESTree AST types.
 
 ## Install
 
@@ -86,7 +86,9 @@ Useful expression APIs:
 - compile(source, options): shorter alias for compileExpression(source, options)
 - compileExpression(source, options): parse once and evaluate many times
 - tokenizeExpression(source): inspect lexer output
-- parseExpression(source, options): inspect the AST directly
+- parseExpression(source, options): inspect the restricted ESTree AST directly
+
+The expression AST uses standard ESTree nodes wherever the supported syntax has one, including `BinaryExpression`, `ChainExpression`, `ArrowFunctionExpression`, and the standard binding patterns. Hack pipelines are exposed as the explicit `PipelineExpression` and `TopicReference` extensions. Nodes retain `start` and `end` offsets, while ESTree `loc` remains optional. The package intentionally does not accept or emit the previous lowercase custom AST format.
 
 Useful expression options:
 
@@ -109,6 +111,7 @@ Useful expression options:
 - rootContextMode: control root-scope normalization with allow, copy-non-plain-to-null-prototype, require-plain-object, or copy-plain-data-to-null-prototype
 - objectLiteralMode: control object-spread hardening with none, filter-blocked, plain-object-only, or safe
 - isCallableAllowed: customize which functions, methods, and template tags may execute
+- propertyAccess: customize every property and method read; use the exported ownPropertyAccess helper to reject inherited properties
 - taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
 
 Compatibility example:
@@ -178,11 +181,11 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 - pure-expr is not a general-purpose sandbox. It blocks a number of dangerous globals and prototype-chain escape hatches, but allowed host values and functions still execute with normal host semantics.
 - Function calls are not fully sandboxed. The default call policy only permits a conservative subset of standard-library functions and methods, plus pure-expr-generated arrow functions; custom or host-provided callables still require explicit approval through isCallableAllowed.
 - Object spread filters blocked keys by default. Use objectLiteralMode to opt into legacy behavior, plain-object-only spread, or null-prototype safe object literals.
-- Resource controls such as maxSourceLength, AST budgets, maxSteps, allowCalls, and allowRegexLiterals are opt-in.
+- Resource controls such as maxSourceLength, AST budgets, maxSteps, allowCalls, and allowRegexLiterals are opt-in. Arrow callbacks share their originating evaluation's step and call-depth budgets, including callbacks invoked repeatedly by allowed host functions.
 - The runtime step budget now counts elements expanded through array and call spread syntax.
 - Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
 - Template placeholders do not parse embedded JavaScript while searching for their closing delimiter. If the embedded source contains the same closing brace run as the surrounding delimiter, increase the delimiter length on both sides.
-- The `functionMode: 'performance'` option is implemented for pure-expr-generated arrow functions. It keeps the same language and safety semantics as the default mode, but uses a cached compiled execution path for arrow bodies. Non-function expressions still use the standard evaluator path.
+- The `functionMode: 'performance'` option is implemented for pure-expr-generated arrow functions. It caches arrow parameter binders and runtime metadata while sharing the standard ESTree evaluator semantics. Non-function expressions use the standard evaluator path.
 
 ## Publishing
 

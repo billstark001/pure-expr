@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.0 - 2026-09-18
+
+### Added
+
+- Added injectable `propertyAccess` evaluation policies and exported `inheritedPropertyAccess` and `ownPropertyAccess` policy helpers.
+- Added `ChainExpression` evaluation with JavaScript-compatible optional-chain short-circuit propagation.
+
+### Changed
+
+- Replaced the public custom AST with a restricted ESTree representation based on `@types/estree`. Hack pipelines remain explicit `PipelineExpression` and `TopicReference` extensions.
+- Represented `undefined` as an ESTree `Identifier`, split tagged templates into `TaggedTemplateExpression` and `TemplateLiteral`, and represented arrow parameters with standard ESTree patterns.
+- Arrow-function calls now share execution-step and call-depth budgets with their originating evaluation.
+- Removed all compatibility aliases for the previous AST node types and field names.
+
+### Fixed
+
+- Fixed optional chains such as `obj?.a.b` and `obj?.method()` so the complete unparenthesized chain short-circuits, while parentheses correctly terminate propagation.
+- Applied property access policies consistently to property reads, method reads, tagged template receivers, and object destructuring.
+
 ## 0.2.0 - 2026-04-28
 
 ### Added
