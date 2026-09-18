@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Added optional ESTree `loc` generation with configurable starting line, starting column, and source name.
+- Added layered evaluation environments for separately isolated data, host capabilities, and mutable `BindingStore` variables.
+- Added explicit reference, shallow-snapshot, and deep-snapshot context isolation with safe shallow/deep freezing.
+- Added restricted identifier assignments with deny, overlay, commit, and transaction write modes.
+- Added a context-policy benchmark covering isolation, freezing, layered environments, and write modes.
 - Added injectable `propertyAccess` evaluation policies and exported `inheritedPropertyAccess` and `ownPropertyAccess` policy helpers.
 - Added `ChainExpression` evaluation with JavaScript-compatible optional-chain short-circuit propagation.
 - Added configurable lexer number policies, ordered custom lexer rules, optional raw source preservation, and a public lexer position.
@@ -17,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Public expression node types now derive from ESTree without exposing the parser's internal `start` and `end` offsets.
+- Replaced `rootContextMode` with the orthogonal `contextPolicy`; shallow snapshots now always copy own enumerable bindings regardless of the input object's prototype.
+- Compiled expressions now acquire call-time contexts on every evaluation; escaped arrows inherit that evaluation's isolation semantics.
+- Restored reference-context throughput with allocation-light compiled and arrow-scope fast paths while retaining mutable lexical captures.
+- Migrated the Biome recommended-rules configuration to the `preset` field.
 - Replaced the public custom AST with a restricted ESTree representation based on `@types/estree`. Hack pipelines remain explicit `PipelineExpression` and `TopicReference` extensions.
 - Represented `undefined` as an ESTree `Identifier`, split tagged templates into `TaggedTemplateExpression` and `TemplateLiteral`, and represented arrow parameters with standard ESTree patterns.
 - Arrow-function calls now share execution-step and call-depth budgets with their originating evaluation.

@@ -2,7 +2,7 @@
 
 pure-expr is an ESM-first TypeScript library for two related jobs:
 
-- parsing and evaluating small JavaScript-like expressions against a readonly scope
+- parsing and evaluating small JavaScript-like expressions against a controlled context
 - parsing and rendering text templates with {{ expression }} placeholders
 
 It also exports the lower-level lexer, parser, evaluator and restricted ESTree AST types.
@@ -94,6 +94,7 @@ Useful expression options:
 
 - allowAwait: enable parsing of await expressions in sync mode
 - allowArrowFunctions: enable or disable concise-body arrow functions
+- allowAssignments: enable parsing restricted identifier assignments; evaluation normally enables this automatically when `writes` is not `deny`
 - allowIn: enable the in operator
 - allowCalls: disable all calls, tagged templates, pipeline-internal calls, and arrow-function invocations when set to false
 - allowRegexLiterals: disable regex literals when set to false
@@ -109,13 +110,67 @@ Useful expression options:
 - maxCallArguments: reject calls above a configured argument count
 - maxTemplateExpressions: reject template literals above a configured placeholder count
 - maxSteps: stop evaluation when the evaluator exceeds a runtime step budget
-- rootContextMode: control root-scope normalization with allow, copy-non-plain-to-null-prototype, require-plain-object, or copy-plain-data-to-null-prototype
+- contextPolicy: independently control accepted inputs, per-evaluation isolation, and freezing
+- writes: control identifier writes with `deny`, `overlay`, `commit`, or `transaction`
 - objectLiteralMode: control object-spread hardening with none, filter-blocked, plain-object-only, or safe
 - isCallableAllowed: customize which functions, methods, and template tags may execute
 - propertyAccess: customize every property and method read; use the exported ownPropertyAccess helper to reject inherited properties
 - taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
 
-`rootContextMode` controls validation and copying, not JavaScript mutability. The evaluator itself does not assign to the caller's root context: per-call overrides and arrow-parameter bindings use internal objects. However, context values are passed by reference in every mode except `copy-plain-data-to-null-prototype`, so an allowed host function can still mutate nested objects. Use that deep-copy mode for plain data isolation; no mode can make arbitrary host objects or functions deeply immutable.
+### Context Isolation And Mutable Variables
+
+`contextPolicy` is applied afresh on every evaluation:
+
+| Isolation | What the evaluator reads | Valid freeze modes |
+| --- | --- | --- |
+| `reference` | The caller's object directly | `none` |
+| `shallow-snapshot` | A null-prototype copy of own enumerable root bindings | `none`, `shallow` |
+| `deep-snapshot` | A recursive copy of a plain-object/array data graph | `none`, `shallow`, `deep` |
+
+Freezing only applies to evaluator-owned snapshots; caller-owned objects are never frozen. Deep snapshots reject accessors, circular references, and non-plain nested objects. `contextPolicy.input` defaults to `plain-only`; use `own-properties` for class-like objects whose own bindings should be visible, or `allow` when function objects are also valid roots.
+
+A compiled expression obtains its context on every call and does not retain an earlier input. An arrow returned by an evaluation intentionally captures that evaluation's reference or snapshot.
+
+Use `createEvaluationEnvironment` when data, host capabilities, and mutable story variables need different policies:
+
+```ts
+import {
+  createBindingStore,
+  createEvaluationEnvironment,
+  evaluate,
+} from 'pure-expr';
+
+const storyVariables = { score: 1 };
+const environment = createEvaluationEnvironment({
+  data: { page: { title: 'Example' } },
+  dataPolicy: { isolation: 'deep-snapshot', freeze: 'deep' },
+  capabilities: { format: (value: unknown) => String(value) },
+  variables: createBindingStore(storyVariables),
+});
+
+evaluate('score += 2', environment, { writes: 'commit' });
+```
+
+Environment lookup order is lexical locals, variables, data, then capabilities. Data follows `dataPolicy` or the evaluator's `contextPolicy`; capabilities default to referenced host objects. Variables are explicit live state and are not snapshotted or frozen.
+
+| Write mode | Behavior |
+| --- | --- |
+| `deny` | Default; context assignment is rejected |
+| `overlay` | Writes remain local to the current evaluation |
+| `commit` | Writes immediately update the variable store |
+| `transaction` | Writes are staged until the returned controller is committed |
+
+```ts
+const pending = evaluate('score += 2', environment, {
+  writes: 'transaction',
+});
+
+pending.value; // 3
+pending.changes; // ReadonlyMap { 'score' => 3 }
+pending.commit(); // storyVariables.score is now 3
+```
+
+Only identifier bindings are assignable; member assignment such as `object.value = 1`, update operators, and `delete` remain unsupported. Lexical arrow parameters can be reassigned without writing the root context. Template rendering supports `deny`, `overlay`, and `commit`; transaction mode is rejected because placeholders are evaluated separately.
 
 Compatibility example:
 
@@ -215,14 +270,11 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 
 ## Notes And Limits
 
-- The published package now ships both ESM and CommonJS entrypoints. import resolves to the ESM build by default, while require() resolves to the CJS build.
-- The emitted package syntax targets ES2015 for distribution compatibility, but that is not a full ES2015 runtime guarantee. The evaluator still exposes newer language/runtime features such as bigint handling and whichever standard-library methods exist in the host runtime.
-- In practice, ES2015 is a reasonable emit baseline for bundlers and downstream transpilers, but it is not sufficient if you need this package itself to run unchanged on old engines with no bigint or newer built-ins.
-- Expressions are intentionally read-only. Statements and assignment operators are rejected.
+- The package ships ESM and CommonJS entrypoints. Its emitted syntax targets ES2015 for bundlers and downstream transpilers, but runtime features such as bigint and newer built-ins still depend on the host.
+- Expressions are read-only by default. Setting `writes` enables identifier assignment expressions; statements, member assignment, `delete`, and update operators remain rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
 - Arrow functions are concise-body only. `this`, `arguments`, `super`, and `new.target` are rejected, and `function` / class definitions remain unsupported.
-- Root evaluation contexts must be plain objects or null-prototype objects by default. Use rootContextMode to opt into copying non-plain roots, allowing them unchanged, or deep-copying a plain data graph with copy-plain-data-to-null-prototype.
-- copy-plain-data-to-null-prototype rejects accessor properties and circular references anywhere in the root data graph, and it clones plain-object/array data into null-prototype/plain-array containers before evaluation.
+- Root evaluation contexts must be plain objects or null-prototype objects by default. Set `contextPolicy.input` to `own-properties` or `allow` for explicit non-plain inputs, and choose `shallow-snapshot` when own enumerable bindings should always be copied.
 - Getter and Proxy handling still has a platform limitation: JavaScript does not provide a reliable portable Proxy brand check, and reflective inspection may itself trigger Proxy traps while the data graph is being validated/copied. Treat Proxy-backed contexts as unsupported in hardened deployments until a future release offers a stricter strategy.
 - pure-expr is not a general-purpose sandbox. It blocks a number of dangerous globals and prototype-chain escape hatches, but allowed host values and functions still execute with normal host semantics.
 - Function calls are not fully sandboxed. The default call policy only permits a conservative subset of standard-library functions and methods, plus pure-expr-generated arrow functions; custom or host-provided callables still require explicit approval through isCallableAllowed.
@@ -249,12 +301,15 @@ pnpm install
 pnpm run format
 pnpm run lint
 pnpm run bench:expr
+pnpm run bench:context
 pnpm run bench:template
 pnpm run bench:lexer
 pnpm run ci
 ```
 
 The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, short repeated, and Hack-pipe-heavy expressions. It also reports arrow-function creation and invocation throughput for both the `default` and `performance` function backends.
+
+The context benchmark compares compiled evaluation throughput across reference, shallow-snapshot, deep-snapshot, freeze, layered-environment, overlay, commit, and transaction policies. It includes both small and wide context shapes so fixed per-evaluation costs and snapshot scaling remain visible.
 
 The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, and short repeated templates.
 

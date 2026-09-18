@@ -70,6 +70,7 @@
     "build:js": "node ./scripts/build.mjs",
     "build:types": "tsc -p tsconfig.build.json",
     "bench:expr": "pnpm run build:js && node ./scripts/bench-expr-modes.mjs",
+    "bench:context": "pnpm run build:js && node ./scripts/bench-context-modes.mjs",
     "bench:template": "pnpm run build:js && node ./scripts/bench-template-modes.mjs",
     "bench:lexer": "pnpm run build:js && node ./scripts/bench-lexer.mjs",
     "lint": "biome lint .",
