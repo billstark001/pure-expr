@@ -71,6 +71,14 @@ describe('public API', () => {
     expect(compiled.evaluate({ count: 4 })).toBe(5)
   })
 
+  test('compileExpression preserves optional chains and step accounting', () => {
+    const optional = compileExpression('obj?.missing.value')
+    expect(optional.evaluate({ obj: null })).toBe(undefined)
+
+    const budgeted = compileExpression('({ 1: value })', { maxSteps: 3 })
+    expect(() => budgeted.evaluate({ value: 1 })).toThrow('Maximum evaluation steps')
+  })
+
   test('compileExpression supports generated arrow functions with the default call policy', () => {
     const compiled = compileExpression('(value => value + step)(count)')
 

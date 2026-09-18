@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Replaced the public custom AST with a restricted ESTree representation based on `@types/estree`. Hack pipelines remain explicit `PipelineExpression` and `TopicReference` extensions.
 - Represented `undefined` as an ESTree `Identifier`, split tagged templates into `TaggedTemplateExpression` and `TemplateLiteral`, and represented arrow parameters with standard ESTree patterns.
 - Arrow-function calls now share execution-step and call-depth budgets with their originating evaluation.
+- `compileExpression` now precompiles the complete expression tree for repeated evaluation; performance-mode arrows also precompile their bodies and parameter binders.
 - Removed all compatibility aliases for the previous AST node types and field names.
 - Lexer tokens now expose their parser-facing spelling as `value`; exact source spelling is available as optional `raw` data when requested.
 

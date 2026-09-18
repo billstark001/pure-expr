@@ -26,10 +26,10 @@ export {
 } from './evaluator.js'
 export {
   cookTemplate,
-  type JSLexerOptions,
-  type JSLexerRule,
   JSLexError,
   JSLexer,
+  type JSLexerOptions,
+  type JSLexerRule,
   type JSNumberOptions,
   type JSToken,
   type JSTokenKind,
@@ -254,11 +254,12 @@ export function compileExpression(
 ): CompiledExpression {
   const ast = parseExpression(expression, options)
   const evaluator = new JSEvaluator({}, options)
+  const execute = evaluator.compile(ast)
   return {
     source: expression,
     ast,
     evaluate(context: Record<string, unknown> = {}) {
-      return evaluator.evaluate(ast, context)
+      return execute(context)
     },
   }
 }

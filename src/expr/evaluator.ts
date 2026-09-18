@@ -233,7 +233,7 @@ function evalArrowFunctionPerformance(node: ArrowFunctionExpression, state: Eval
   }, runtime.expectedArgumentCount)
 }
 
-const { getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
+const { compileNode, getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
 
 function evalUnary(node: UnaryExpression, state: EvalState): unknown {
   if (node.operator === 'typeof') {
@@ -559,6 +559,15 @@ export class JSEvaluator {
     node: ExpressionNode,
     context: Readonly<Record<string, unknown>> = EMPTY_CONTEXT,
   ): unknown {
+    return evalNode(node, this.createState(context))
+  }
+
+  compile(node: ExpressionNode): (context?: Readonly<Record<string, unknown>>) => unknown {
+    const execute = compileNode(node)
+    return (context = EMPTY_CONTEXT) => execute(this.createState(context))
+  }
+
+  private createState(context: Readonly<Record<string, unknown>>): EvalState {
     const normalizedContext =
       context === EMPTY_CONTEXT
         ? EMPTY_CONTEXT
@@ -571,6 +580,6 @@ export class JSEvaluator {
           ? mergeContexts(this.context, normalizedContext, getRootContextMode(this.resolvedOpts))
           : normalizedContext
 
-    return evalNode(node, createEvalState(stateContext, this.resolvedOpts))
+    return createEvalState(stateContext, this.resolvedOpts)
   }
 }

@@ -382,10 +382,6 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
       const key = node.name
       return () => key
     }
-    if (!computed && node.type === 'Literal') {
-      const key = String(node.value)
-      return () => key
-    }
     const execute = compileNode(node)
     return (state) => String(execute(state))
   }

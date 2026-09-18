@@ -84,7 +84,7 @@ Useful expression APIs:
 
 - evaluate(source, scope, options): parse and evaluate once
 - compile(source, options): shorter alias for compileExpression(source, options)
-- compileExpression(source, options): parse once and evaluate many times
+- compileExpression(source, options): parse and precompile once, then evaluate many times
 - tokenizeExpression(source): inspect lexer output
 - parseExpression(source, options): inspect the restricted ESTree AST directly
 
@@ -228,7 +228,7 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 - The runtime step budget now counts elements expanded through array and call spread syntax.
 - Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
 - Template placeholders do not parse embedded JavaScript while searching for their closing delimiter. If the embedded source contains the same closing brace run as the surrounding delimiter, increase the delimiter length on both sides.
-- The `functionMode: 'performance'` option is implemented for pure-expr-generated arrow functions. It caches arrow parameter binders and runtime metadata while sharing the standard ESTree evaluator semantics. Non-function expressions use the standard evaluator path.
+- `compileExpression(...)` precompiles the complete restricted ESTree into cached evaluator closures. The `functionMode: 'performance'` option additionally precompiles pure-expr-generated arrow bodies and parameter binders while preserving the same safety and budget semantics.
 
 ## Publishing
 
