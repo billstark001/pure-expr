@@ -130,6 +130,10 @@ function validateArrowReferences(node: ExpressionNode, src: string): void {
       return
     case 'ArrowFunctionExpression':
       return
+    case 'AssignmentExpression':
+      validateArrowReferences(node.left, src)
+      validateArrowReferences(node.right, src)
+      return
     case 'UnaryExpression':
     case 'AwaitExpression':
       validateArrowReferences(node.argument, src)
@@ -215,6 +219,11 @@ function validateExpressionTopicUsage(
         topicCount + validateExpressionTopicUsage(node.body, allowTopic, parenthesizedNodes, src)
       )
     }
+    case 'AssignmentExpression':
+      return (
+        validateExpressionTopicUsage(node.left, allowTopic, parenthesizedNodes, src) +
+        validateExpressionTopicUsage(node.right, allowTopic, parenthesizedNodes, src)
+      )
     case 'UnaryExpression':
     case 'AwaitExpression':
       return validateExpressionTopicUsage(node.argument, allowTopic, parenthesizedNodes, src)

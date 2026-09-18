@@ -5,7 +5,9 @@ import type {
   LogicalExpression,
   UnaryExpression,
 } from '../node-types.js'
+import { assignScopeBinding, resolveScopeBinding } from './context.js'
 import { BLOCKED_GLOBALS, BLOCKED_PROPS } from './security.js'
+import { ensureEvalScope } from './state.js'
 import {
   type EvalState,
   JSEvalError,
@@ -14,18 +16,146 @@ import {
 } from './types.js'
 
 export function resolveIdentifier(node: Identifier, state: EvalState): unknown {
+  if (state.directContext) return resolveDirectIdentifier(node, state)
   if (node.name === 'undefined') return undefined
   if (BLOCKED_GLOBALS.has(node.name)) {
     throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
   }
-  if (!Object.prototype.hasOwnProperty.call(state.context, node.name)) {
-    throw new JSEvalError(`'${node.name}' is not defined`, node)
+  let value: unknown
+  if (state.directLocals) {
+    if (Object.prototype.hasOwnProperty.call(state.directLocals, node.name)) {
+      value = state.directLocals[node.name]
+    } else {
+      const context = state.directRootContext!
+      if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
+        throw new JSEvalError(`'${node.name}' is not defined`, node)
+      }
+      value = context[node.name]
+    }
+  } else {
+    const scope = state.scope!
+    if (Object.prototype.hasOwnProperty.call(scope.locals, node.name)) {
+      value = scope.locals[node.name]
+    } else if (!scope.parent && scope.environment.directContext) {
+      const context = scope.environment.directContext
+      if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
+        throw new JSEvalError(`'${node.name}' is not defined`, node)
+      }
+      value = context[node.name]
+    } else {
+      value = resolveScopeBinding(scope, node.name)
+    }
   }
-  const value = state.context[node.name]
   if (value === UNINITIALIZED_ARROW_PARAM) {
     throw new JSEvalError(`Cannot access '${node.name}' before initialization`, node)
   }
   return value
+}
+
+export function resolveDirectIdentifier(node: Identifier, state: EvalState): unknown {
+  if (node.name === 'undefined') return undefined
+  if (BLOCKED_GLOBALS.has(node.name)) {
+    throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
+  }
+  const context = state.directContext!
+  if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
+    throw new JSEvalError(`'${node.name}' is not defined`, node)
+  }
+  const value = context[node.name]
+  if (value === UNINITIALIZED_ARROW_PARAM) {
+    throw new JSEvalError(`Cannot access '${node.name}' before initialization`, node)
+  }
+  return value
+}
+
+export function resolveDirectLocalIdentifier(node: Identifier, state: EvalState): unknown {
+  if (node.name === 'undefined') return undefined
+  if (BLOCKED_GLOBALS.has(node.name)) {
+    throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
+  }
+  let value: unknown
+  if (Object.prototype.hasOwnProperty.call(state.directLocals!, node.name)) {
+    value = state.directLocals![node.name]
+  } else {
+    const context = state.directRootContext!
+    if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
+      throw new JSEvalError(`'${node.name}' is not defined`, node)
+    }
+    value = context[node.name]
+  }
+  if (value === UNINITIALIZED_ARROW_PARAM) {
+    throw new JSEvalError(`Cannot access '${node.name}' before initialization`, node)
+  }
+  return value
+}
+
+export function compileDirectLocalIdentifier(
+  node: Identifier,
+  boundNames: ReadonlySet<string>,
+): (state: EvalState) => unknown {
+  const { name } = node
+  if (name === 'undefined') return () => undefined
+  if (BLOCKED_GLOBALS.has(name)) {
+    return () => {
+      throw new JSEvalError(`Access to '${name}' is not permitted`, node)
+    }
+  }
+  if (boundNames.has(name)) {
+    return (state) => {
+      const value = state.directLocals![name]
+      if (value === UNINITIALIZED_ARROW_PARAM) {
+        throw new JSEvalError(`Cannot access '${name}' before initialization`, node)
+      }
+      return value
+    }
+  }
+  return (state) => {
+    const context = state.directRootContext!
+    if (!Object.prototype.hasOwnProperty.call(context, name)) {
+      throw new JSEvalError(`'${name}' is not defined`, node)
+    }
+    return context[name]
+  }
+}
+
+export function assignIdentifier(name: string, value: unknown, state: EvalState): unknown {
+  if (name === 'undefined' || BLOCKED_GLOBALS.has(name)) {
+    throw new JSEvalError(`Access to '${name}' is not permitted`)
+  }
+  return assignScopeBinding(ensureEvalScope(state), name, value)
+}
+
+export function applyAssignmentOperator(operator: string, left: unknown, right: unknown): unknown {
+  switch (operator) {
+    case '=':
+      return right
+    case '+=':
+      return (left as any) + (right as any)
+    case '-=':
+      return (left as any) - (right as any)
+    case '*=':
+      return (left as any) * (right as any)
+    case '/=':
+      return (left as any) / (right as any)
+    case '%=':
+      return (left as any) % (right as any)
+    case '**=':
+      return (left as any) ** (right as any)
+    case '&=':
+      return (left as any) & (right as any)
+    case '|=':
+      return (left as any) | (right as any)
+    case '^=':
+      return (left as any) ^ (right as any)
+    case '<<=':
+      return (left as any) << (right as any)
+    case '>>=':
+      return (left as any) >> (right as any)
+    case '>>>=':
+      return (left as any) >>> (right as any)
+    default:
+      throw new JSEvalError(`Unknown assignment operator '${operator}'`)
+  }
 }
 
 export function assertPropertyAllowed(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { JSEvaluator, JSLexer, type JSLexerRule, JSExpressionParser } from '../src/index.js'
+import { JSEvaluator, JSExpressionParser, JSLexer, type JSLexerRule } from '../src/index.js'
 
 const rewriteRules: readonly JSLexerRule[] = [
   {

@@ -48,7 +48,7 @@ export const INFIX_PREC: Record<string, number> = {
 
 export const RIGHT_ASSOC = new Set(['**'])
 
-export const FORBIDDEN_ASSIGNMENT_OPERATORS = new Set([
+export const ASSIGNMENT_OPERATORS = new Set([
   '=',
   '+=',
   '-=',

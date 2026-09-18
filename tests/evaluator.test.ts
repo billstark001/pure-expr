@@ -539,28 +539,26 @@ describe('evaluator', () => {
       count = 2
     }
 
-    expect(() => evaluate('count', new Scope() as unknown as Record<string, unknown>)).toThrow(
-      'plain object',
-    )
+    expect(() => evaluate('count', new Scope())).toThrow('plain object')
   })
-  test('copy-non-plain root context mode preserves own properties only', () => {
+  test('shallow context snapshots preserve own properties only', () => {
     class Scope {
       count = 2
     }
     ;(Scope.prototype as unknown as Record<string, unknown>).hidden = 99
 
     expect(
-      evaluate('count', new Scope() as unknown as Record<string, unknown>, {
-        rootContextMode: 'copy-non-plain-to-null-prototype',
+      evaluate('count', new Scope(), {
+        contextPolicy: { input: 'own-properties', isolation: 'shallow-snapshot' },
       }),
     ).toBe(2)
     expect(() =>
-      evaluate('hidden', new Scope() as unknown as Record<string, unknown>, {
-        rootContextMode: 'copy-non-plain-to-null-prototype',
+      evaluate('hidden', new Scope(), {
+        contextPolicy: { input: 'own-properties', isolation: 'shallow-snapshot' },
       }),
     ).toThrow('not defined')
   })
-  test('copy-plain-data-to-null-prototype rejects accessor properties without invoking getters', () => {
+  test('deep context snapshots reject accessor properties without invoking getters', () => {
     let getterHits = 0
     const nested = Object.defineProperty({}, 'value', {
       enumerable: true,
@@ -572,22 +570,22 @@ describe('evaluator', () => {
 
     expect(() =>
       evaluate('nested.value', { nested } as Record<string, unknown>, {
-        rootContextMode: 'copy-plain-data-to-null-prototype',
+        contextPolicy: { isolation: 'deep-snapshot' },
       }),
     ).toThrow('accessor properties')
     expect(getterHits).toBe(0)
   })
-  test('copy-plain-data-to-null-prototype rejects circular references', () => {
+  test('deep context snapshots reject circular references', () => {
     const context = { value: 1 } as Record<string, unknown>
     context.self = context
 
     expect(() =>
       evaluate('value', context, {
-        rootContextMode: 'copy-plain-data-to-null-prototype',
+        contextPolicy: { isolation: 'deep-snapshot' },
       }),
     ).toThrow('circular references')
   })
-  test('copy-plain-data-to-null-prototype supports nested plain data graphs', () => {
+  test('deep context snapshots support nested plain data graphs', () => {
     expect(
       evaluate(
         'nested.value + items[0]',
@@ -596,7 +594,7 @@ describe('evaluator', () => {
           items: [3, 2, 1],
         },
         {
-          rootContextMode: 'copy-plain-data-to-null-prototype',
+          contextPolicy: { isolation: 'deep-snapshot' },
         },
       ),
     ).toBe(7)

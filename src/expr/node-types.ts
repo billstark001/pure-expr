@@ -3,6 +3,7 @@ import type {
   ArrayExpression as ESTreeArrayExpression,
   ArrayPattern as ESTreeArrayPattern,
   ArrowFunctionExpression as ESTreeArrowFunctionExpression,
+  AssignmentExpression as ESTreeAssignmentExpression,
   AssignmentPattern as ESTreeAssignmentPattern,
   AssignmentProperty as ESTreeAssignmentProperty,
   AwaitExpression as ESTreeAwaitExpression,
@@ -119,6 +120,12 @@ export interface AssignmentPattern extends Omit<ESTreeAssignmentPattern, 'left' 
   right: ExpressionNode
 }
 
+/** Restricted assignment expression: only identifier bindings are writable. */
+export interface AssignmentExpression extends Omit<ESTreeAssignmentExpression, 'left' | 'right'> {
+  left: Identifier
+  right: ExpressionNode
+}
+
 export interface RestElement extends Omit<ESTreeRestElement, 'argument'> {
   argument: BindingPattern
 }
@@ -168,6 +175,7 @@ export type ExpressionNode =
   | Identifier
   | TopicReference
   | ArrowFunctionExpression
+  | AssignmentExpression
   | UnaryExpression
   | AwaitExpression
   | BinaryExpression

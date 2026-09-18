@@ -1,4 +1,9 @@
-import { type JSEvalOptions, JSEvaluator } from './evaluator.js'
+import {
+  type EvaluationInput,
+  type EvaluationTransactionResult,
+  type JSEvalOptions,
+  JSEvaluator,
+} from './evaluator.js'
 import { JSLexer, type JSToken } from './lexer/index.js'
 import type { BindingPattern, ExpressionNode } from './node-types.js'
 import { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
@@ -8,6 +13,18 @@ export interface EvalOptions extends JSParserOptions, JSEvalOptions {}
 export { defaultCallPermissionPolicy } from './call-permission.js'
 export {
   allowAllCalls,
+  type BindingStore,
+  type ContextFreeze,
+  type ContextInputMode,
+  type ContextIsolation,
+  type ContextPolicy,
+  type ContextWriteMode,
+  createBindingStore,
+  createEvaluationEnvironment,
+  type EvaluationEnvironment,
+  type EvaluationEnvironmentInit,
+  type EvaluationInput,
+  type EvaluationTransactionResult,
   type FunctionMode,
   inheritedPropertyAccess,
   type JSCallKind,
@@ -21,7 +38,6 @@ export {
   type PropertyAccessContext,
   type PropertyAccessKind,
   type PropertyAccessPolicy,
-  type RootContextMode,
   type TaggedTemplateArrayMode,
 } from './evaluator.js'
 export {
@@ -40,6 +56,7 @@ export type {
   ArrayExpression,
   ArrayPattern,
   ArrowFunctionExpression,
+  AssignmentExpression,
   AssignmentPattern,
   AssignmentProperty,
   AstNode,
@@ -77,7 +94,13 @@ export {
 export interface CompiledExpression {
   readonly source: string
   readonly ast: ExpressionNode
-  evaluate(context?: Record<string, unknown>): unknown
+  evaluate(context?: EvaluationInput): unknown
+}
+
+export interface TransactionalCompiledExpression {
+  readonly source: string
+  readonly ast: ExpressionNode
+  evaluate(context?: EvaluationInput): EvaluationTransactionResult
 }
 
 export function tokenizeExpression(
@@ -151,6 +174,10 @@ function validateAstBudget(ast: ExpressionNode, options: JSParserOptions): void 
       case 'ArrowFunctionExpression':
         for (const param of node.params) visitBinding(param, depth + 1)
         visit(node.body, depth + 1)
+        return
+      case 'AssignmentExpression':
+        visit(node.left, depth + 1)
+        visit(node.right, depth + 1)
         return
       case 'UnaryExpression':
       case 'AwaitExpression':
@@ -254,15 +281,20 @@ export function parseExpression(expression: string, options: JSParserOptions = {
 
 export function compileExpression(
   expression: string,
+  options: EvalOptions & { writes: 'transaction' },
+): TransactionalCompiledExpression
+export function compileExpression(expression: string, options?: EvalOptions): CompiledExpression
+export function compileExpression(
+  expression: string,
   options: EvalOptions = {},
-): CompiledExpression {
-  const ast = parseExpression(expression, options)
-  const evaluator = new JSEvaluator({}, options)
+): CompiledExpression | TransactionalCompiledExpression {
+  const ast = parseExpression(expression, parserOptionsForEvaluation(options))
+  const evaluator = new JSEvaluator(undefined, options)
   const execute = evaluator.compile(ast)
   return {
     source: expression,
     ast,
-    evaluate(context: Record<string, unknown> = {}) {
+    evaluate(context: EvaluationInput = {}) {
       return execute(context)
     },
   }
@@ -272,15 +304,38 @@ export const compile = compileExpression
 
 export function evaluate(
   expression: string,
-  context: Record<string, unknown> = {},
+  context: EvaluationInput,
+  options: EvalOptions & { writes: 'transaction' },
+): EvaluationTransactionResult
+export function evaluate(
+  expression: string,
+  context?: EvaluationInput,
+  options?: EvalOptions,
+): unknown
+export function evaluate(
+  expression: string,
+  context: EvaluationInput = {},
   options: EvalOptions = {},
 ): unknown {
-  const ast = parseExpression(expression, options)
+  const ast = parseExpression(expression, parserOptionsForEvaluation(options))
   return new JSEvaluator(context, options).evaluate(ast)
 }
 
+export function createEvaluator(
+  options: EvalOptions & { writes: 'transaction' },
+): (expression: string, context?: EvaluationInput) => EvaluationTransactionResult
+export function createEvaluator(
+  options?: EvalOptions,
+): (expression: string, context?: EvaluationInput) => unknown
 export function createEvaluator(options: EvalOptions = {}) {
-  const evaluator = new JSEvaluator({}, options)
-  return (expression: string, context: Record<string, unknown> = {}) =>
-    evaluator.evaluate(parseExpression(expression, options), context)
+  const evaluator = new JSEvaluator(undefined, options)
+  return (expression: string, context: EvaluationInput = {}) =>
+    evaluator.evaluate(parseExpression(expression, parserOptionsForEvaluation(options)), context)
+}
+
+function parserOptionsForEvaluation(options: EvalOptions): EvalOptions {
+  if (options.allowAssignments !== undefined || !options.writes || options.writes === 'deny') {
+    return options
+  }
+  return { ...options, allowAssignments: true }
 }

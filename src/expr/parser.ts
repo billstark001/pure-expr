@@ -1,7 +1,21 @@
 import type { JSToken, JSTokenKind } from './lexer/index.js'
 import type { ExpressionNode as PublicExpressionNode } from './node-types.js'
+import {
+  isArrowFunctionStart as detectArrowFunctionStart,
+  type ParserBindingDelegate,
+  parseArrowFunction as parseArrowFunctionWithBindings,
+} from './parser/bindings.js'
+import { type JSLocationOptions, JSParseError, type JSParserOptions } from './parser/errors.js'
+import {
+  ASSIGNMENT_OPERATORS,
+  FORBIDDEN_PREFIX_IDENTIFIERS,
+  INFIX_PREC,
+  PREC,
+  RIGHT_ASSOC,
+} from './parser/grammar.js'
 import type {
   ArrowFunctionExpression,
+  AssignmentExpression,
   BinaryExpression,
   CallExpression,
   ChainExpression,
@@ -18,19 +32,6 @@ import type {
   TopicReference,
   UnaryExpression,
 } from './parser/node-types.js'
-import {
-  isArrowFunctionStart as detectArrowFunctionStart,
-  type ParserBindingDelegate,
-  parseArrowFunction as parseArrowFunctionWithBindings,
-} from './parser/bindings.js'
-import { type JSLocationOptions, JSParseError, type JSParserOptions } from './parser/errors.js'
-import {
-  FORBIDDEN_ASSIGNMENT_OPERATORS,
-  FORBIDDEN_PREFIX_IDENTIFIERS,
-  INFIX_PREC,
-  PREC,
-  RIGHT_ASSOC,
-} from './parser/grammar.js'
 import { parseStringValue } from './parser/shared.js'
 import { buildTemplateAstNode } from './parser/template.js'
 import { assertValidLogicalMixing, validateTopicUsage } from './parser/validation.js'
@@ -95,7 +96,24 @@ export class JSExpressionParser {
 
   private parseAssignmentExpr(): ExpressionNode {
     if (this.isArrowFunctionStart()) return this.parseArrowFunction()
-    return this.parsePipeExpr()
+    if (!this.opts.allowAssignments) return this.parsePipeExpr()
+    const left = this.parsePipeExpr()
+    const assignment = this.peek()
+    if (assignment?.kind !== 'op' || !ASSIGNMENT_OPERATORS.has(assignment.value)) {
+      return left
+    }
+    if (left.type !== 'Identifier') {
+      throw new JSParseError('Only identifier bindings can be assigned', assignment, this.src)
+    }
+    this.advance()
+    return {
+      type: 'AssignmentExpression',
+      operator: assignment.value as AssignmentExpression['operator'],
+      left,
+      right: this.parseAssignmentExpr(),
+      start: left.start,
+      end: this.lastEnd(),
+    }
   }
 
   private parsePipeExpr(): ExpressionNode {
@@ -265,13 +283,16 @@ export class JSExpressionParser {
 
       // ── Regular infix operators ───────────────────────────────────
       if (t.kind === 'op') {
-        // Block forbidden assignment operators
-        if (FORBIDDEN_ASSIGNMENT_OPERATORS.has(t.value))
-          throw new JSParseError(
-            `Assignment operator '${t.value}' is not allowed in read-only expressions`,
-            t,
-            this.src,
-          )
+        if (ASSIGNMENT_OPERATORS.has(t.value)) {
+          if (!this.opts.allowAssignments) {
+            throw new JSParseError(
+              `Assignment operator '${t.value}' is not allowed in read-only expressions`,
+              t,
+              this.src,
+            )
+          }
+          break
+        }
 
         const prec = INFIX_PREC[t.value]
         if (prec === undefined || prec < minPrec) break

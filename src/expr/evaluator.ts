@@ -18,31 +18,49 @@ import {
 } from './evaluator/calls.js'
 import { createCompileRuntime } from './evaluator/compile.js'
 import {
-  cloneContextRecord,
+  completeEvaluation,
   copySpreadProperties,
+  createChildScope,
+  createNullPrototypeRecord,
   createObjectLiteralResult,
+  createRootScope,
+  createRuntimeEnvironment,
   getObjectLiteralMode,
-  getRootContextMode,
-  hasOwnEnumerableKeys,
-  mergeContexts,
-  normalizeContextRoot,
+  isEvaluationEnvironment,
+  prepareReferenceContext,
 } from './evaluator/context.js'
 import {
+  applyAssignmentOperator,
   applyBinaryOperator,
   applyUnaryOperator,
+  assignIdentifier,
+  compileDirectLocalIdentifier,
   evaluateLogicalOperator,
   readProperty,
+  resolveDirectIdentifier,
+  resolveDirectLocalIdentifier,
   resolveIdentifier,
 } from './evaluator/operations.js'
 import { BLOCKED_PROPS } from './evaluator/security.js'
-import { consumeStep, createEvalState } from './evaluator/state.js'
+import {
+  consumeStep,
+  createDirectEvalState,
+  createDirectLocalEvalState,
+  createEvalState,
+  createScopedEvalState,
+  ensureEvalScope,
+} from './evaluator/state.js'
 import { getTaggedTemplateObject } from './evaluator/templates.js'
 import {
+  type ContextInputMode,
+  DEFAULT_CONTEXT_POLICY,
+  DEFAULT_CONTEXT_WRITE_MODE,
   DEFAULT_OBJECT_LITERAL_MODE,
-  DEFAULT_ROOT_CONTEXT_MODE,
   EMPTY_CONTEXT,
   EMPTY_OPTS,
   type EvalState,
+  type EvaluationEnvironment,
+  type EvaluationInput,
   type JSCallable,
   JSEvalError,
   type JSEvalOptions,
@@ -63,10 +81,21 @@ import type {
   UnaryExpression,
 } from './node-types.js'
 
+export { createBindingStore, createEvaluationEnvironment } from './evaluator/context.js'
 export { inheritedPropertyAccess, ownPropertyAccess } from './evaluator/operations.js'
 export { createEvalState } from './evaluator/state.js'
 export {
   allowAllCalls,
+  type BindingStore,
+  type ContextFreeze,
+  type ContextInputMode,
+  type ContextIsolation,
+  type ContextPolicy,
+  type ContextWriteMode,
+  type EvaluationEnvironment,
+  type EvaluationEnvironmentInit,
+  type EvaluationInput,
+  type EvaluationTransactionResult,
   type FunctionMode,
   type JSCallKind,
   type JSCallPermissionContext,
@@ -77,7 +106,6 @@ export {
   type PropertyAccessContext,
   type PropertyAccessKind,
   type PropertyAccessPolicy,
-  type RootContextMode,
   type TaggedTemplateArrayMode,
 } from './evaluator/types.js'
 
@@ -107,6 +135,19 @@ export function evalNode(node: ExpressionNode, state: EvalState): unknown {
 
     case 'ArrowFunctionExpression':
       return evalArrowFunction(node, state)
+    case 'AssignmentExpression': {
+      const name = node.left.name
+      const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
+      if (node.operator === '&&=' && !current) return current
+      if (node.operator === '||=' && current) return current
+      if (node.operator === '??=' && current !== null && current !== undefined) return current
+      const right = evalNode(node.right, state)
+      const value =
+        node.operator === '&&=' || node.operator === '||=' || node.operator === '??='
+          ? right
+          : applyAssignmentOperator(node.operator, current, right)
+      return assignIdentifier(name, value, state)
+    }
     case 'UnaryExpression':
       return evalUnary(node, state)
     case 'AwaitExpression':
@@ -194,19 +235,29 @@ function evalArrowFunction(node: ArrowFunctionExpression, state: EvalState): unk
 }
 
 function evalArrowFunctionDefault(node: ArrowFunctionExpression, state: EvalState): unknown {
-  const capturedContext = state.context
+  const capturedScope = ensureEvalScope(state)
   const capturedTopics = state.topics.slice()
   const capturedOpts = state.opts
   const capturedBudget = state.budget ?? state
   const expectedArgumentCount = getArrowExpectedArgumentCount(node.params)
+  const deferScope = canDeferArrowScope(capturedScope)
 
   return createPureExprArrowFunction((...args: unknown[]) => {
-    const localContext = cloneContextRecord(capturedContext)
-    for (const name of collectArrowBoundNames(node.params)) {
-      localContext[name] = UNINITIALIZED_ARROW_PARAM
+    const names = collectArrowBoundNames(node.params)
+    if (deferScope) {
+      const locals = createArrowLocals(names)
+      const callState = createDirectLocalEvalState(
+        locals,
+        capturedScope.environment,
+        capturedOpts,
+        capturedBudget,
+      )
+      callState.topics = capturedTopics.slice()
+      bindArrowParameters(node.params, args, callState, evalNode)
+      return evalNode(node.body, callState)
     }
-
-    const callState = createEvalState(localContext, capturedOpts, capturedBudget)
+    const localScope = createChildScope(capturedScope, names, UNINITIALIZED_ARROW_PARAM)
+    const callState = createScopedEvalState(localScope, capturedOpts, capturedBudget)
     callState.topics = capturedTopics.slice()
     bindArrowParameters(node.params, args, callState, evalNode)
     return evalNode(node.body, callState)
@@ -215,25 +266,93 @@ function evalArrowFunctionDefault(node: ArrowFunctionExpression, state: EvalStat
 
 function evalArrowFunctionPerformance(node: ArrowFunctionExpression, state: EvalState): unknown {
   const runtime = getCompiledArrowRuntime(node)
-  const capturedContext = state.context
+  const capturedScope = ensureEvalScope(state)
   const capturedTopics = state.topics.slice()
   const capturedOpts = state.opts
   const capturedBudget = state.budget ?? state
+  const deferScope = canDeferArrowScope(capturedScope)
+  const deferredBody = deferScope ? getDirectLocalArrowBody(node) : undefined
 
   return createPureExprArrowFunction((...args: unknown[]) => {
-    const localContext = cloneContextRecord(capturedContext)
-    for (const name of runtime.boundNames) {
-      localContext[name] = UNINITIALIZED_ARROW_PARAM
+    if (deferScope) {
+      const locals = createArrowLocals(runtime.boundNames)
+      const callState = createDirectLocalEvalState(
+        locals,
+        capturedScope.environment,
+        capturedOpts,
+        capturedBudget,
+      )
+      callState.topics = capturedTopics.slice()
+      bindCompiledArrowParameters(runtime.params, args, callState)
+      return deferredBody!(callState)
     }
-
-    const callState = createEvalState(localContext, capturedOpts, capturedBudget)
+    const localScope = createChildScope(
+      capturedScope,
+      runtime.boundNames,
+      UNINITIALIZED_ARROW_PARAM,
+    )
+    const callState = createScopedEvalState(localScope, capturedOpts, capturedBudget)
     callState.topics = capturedTopics.slice()
     bindCompiledArrowParameters(runtime.params, args, callState)
     return runtime.body(callState)
   }, runtime.expectedArgumentCount)
 }
 
+function canDeferArrowScope(scope: NonNullable<EvalState['scope']>): boolean {
+  return !scope.parent && !scope.hasLocalBindings && !!scope.environment.directContext
+}
+
+function createArrowLocals(names: readonly string[]): Record<string, unknown> {
+  const locals = createNullPrototypeRecord()
+  for (const name of names) locals[name] = UNINITIALIZED_ARROW_PARAM
+  return locals
+}
+
 const { compileNode, getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
+const directLocalArrowRuntime = createCompileRuntime({
+  evalArrowFunction,
+  resolveIdentifier: resolveDirectLocalIdentifier,
+})
+const directLocalArrowBodyCache = new WeakMap<
+  ArrowFunctionExpression,
+  (state: EvalState) => unknown
+>()
+const arrowAssignmentCache = new WeakMap<ArrowFunctionExpression, boolean>()
+
+function getDirectLocalArrowBody(node: ArrowFunctionExpression): (state: EvalState) => unknown {
+  let body = directLocalArrowBodyCache.get(node)
+  if (!body) {
+    if (arrowContainsAssignment(node)) {
+      body = directLocalArrowRuntime.compileNode(node.body)
+    } else {
+      const boundNames = new Set(collectArrowBoundNames(node.params))
+      body = createCompileRuntime({
+        evalArrowFunction,
+        compileIdentifier: (identifier) => compileDirectLocalIdentifier(identifier, boundNames),
+      }).compileNode(node.body)
+    }
+    directLocalArrowBodyCache.set(node, body)
+  }
+  return body
+}
+
+function arrowContainsAssignment(node: ArrowFunctionExpression): boolean {
+  const cached = arrowAssignmentCache.get(node)
+  if (cached !== undefined) return cached
+  const visit = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object') return false
+    if (Array.isArray(value)) return value.some(visit)
+    const record = value as Record<string, unknown>
+    if (record.type === 'AssignmentExpression') return true
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'loc' && visit(child)) return true
+    }
+    return false
+  }
+  const result = visit(node)
+  arrowAssignmentCache.set(node, result)
+  return result
+}
 
 function evalUnary(node: UnaryExpression, state: EvalState): unknown {
   if (node.operator === 'typeof') {
@@ -532,57 +651,128 @@ function evalTemplateLiteral(node: TemplateLiteral, state: EvalState): string {
 }
 
 export class JSEvaluator {
-  private readonly context: Readonly<Record<string, unknown>>
-  private readonly hasBaseContext: boolean
+  private readonly context: EvaluationInput
+  private directEnvironmentCache?: WeakMap<EvaluationEnvironment, Readonly<Record<string, unknown>>>
+  private readonly directInputMode: ContextInputMode
+  private readonly useDirectContext: boolean
   private readonly resolvedOpts: Readonly<JSEvalOptions>
 
-  constructor(
-    context: Readonly<Record<string, unknown>> = EMPTY_CONTEXT,
-    opts: JSEvalOptions = EMPTY_OPTS,
-  ) {
+  constructor(context: EvaluationInput = EMPTY_CONTEXT, opts: JSEvalOptions = EMPTY_OPTS) {
     this.resolvedOpts = {
       ...opts,
       functionMode: opts.functionMode ?? 'default',
-      rootContextMode: opts.rootContextMode ?? DEFAULT_ROOT_CONTEXT_MODE,
+      contextPolicy: opts.contextPolicy
+        ? Object.freeze({ ...opts.contextPolicy })
+        : DEFAULT_CONTEXT_POLICY,
+      writes: opts.writes ?? DEFAULT_CONTEXT_WRITE_MODE,
       objectLiteralMode: opts.objectLiteralMode ?? DEFAULT_OBJECT_LITERAL_MODE,
       isCallableAllowed: opts.isCallableAllowed ?? defaultCallPermissionPolicy,
     }
-    this.context = normalizeContextRoot(
-      context,
-      getRootContextMode(this.resolvedOpts),
-      'Base evaluation context',
+    this.context = context
+    const policy = this.resolvedOpts.contextPolicy!
+    this.directInputMode = policy.input ?? 'plain-only'
+    this.useDirectContext =
+      (policy.isolation ?? 'reference') === 'reference' &&
+      (policy.freeze ?? 'none') === 'none' &&
+      this.resolvedOpts.writes === 'deny'
+  }
+
+  evaluate(node: ExpressionNode, context: EvaluationInput = EMPTY_CONTEXT): unknown {
+    const directContext = this.createDirectContext(context)
+    if (directContext) {
+      return evalNode(node, createDirectEvalState(directContext, this.resolvedOpts))
+    }
+    const environment = this.createEnvironment(context)
+    return completeEvaluation(
+      evalNode(node, createEvalState(createRootScope(environment), this.resolvedOpts)),
+      environment,
     )
-    this.hasBaseContext = hasOwnEnumerableKeys(this.context)
   }
 
-  evaluate(
-    node: ExpressionNode,
-    context: Readonly<Record<string, unknown>> = EMPTY_CONTEXT,
-  ): unknown {
-    return evalNode(node, this.createState(context))
+  compile(node: ExpressionNode): (context?: EvaluationInput) => unknown {
+    const trackSteps = this.resolvedOpts.maxSteps !== undefined
+    const directExecute = this.useDirectContext
+      ? createCompileRuntime({
+          evalArrowFunction,
+          resolveIdentifier: resolveDirectIdentifier,
+          trackSteps,
+        }).compileNode(node)
+      : undefined
+    const compileGeneral = () =>
+      trackSteps
+        ? compileNode(node)
+        : createCompileRuntime({ evalArrowFunction, trackSteps: false }).compileNode(node)
+    let execute = directExecute ? undefined : compileGeneral()
+    return (context = EMPTY_CONTEXT) => {
+      const directContext = this.createDirectContext(context)
+      if (directContext) {
+        return directExecute!(createDirectEvalState(directContext, this.resolvedOpts))
+      }
+      const environment = this.createEnvironment(context)
+      execute ??= compileGeneral()
+      return completeEvaluation(
+        execute(createEvalState(createRootScope(environment), this.resolvedOpts)),
+        environment,
+      )
+    }
   }
 
-  compile(node: ExpressionNode): (context?: Readonly<Record<string, unknown>>) => unknown {
-    const execute =
-      this.resolvedOpts.maxSteps === undefined
-        ? createCompileRuntime({ evalArrowFunction, trackSteps: false }).compileNode(node)
-        : compileNode(node)
-    return (context = EMPTY_CONTEXT) => execute(this.createState(context))
-  }
-
-  private createState(context: Readonly<Record<string, unknown>>): EvalState {
-    const normalizedContext =
+  private createDirectContext(
+    context: EvaluationInput,
+  ): Readonly<Record<string, unknown>> | undefined {
+    if (!this.useDirectContext) return undefined
+    const input =
       context === EMPTY_CONTEXT
-        ? EMPTY_CONTEXT
-        : normalizeContextRoot(context, getRootContextMode(this.resolvedOpts), 'Evaluation context')
-
-    const stateContext =
-      normalizedContext === EMPTY_CONTEXT
         ? this.context
-        : this.hasBaseContext
-          ? mergeContexts(this.context, normalizedContext, getRootContextMode(this.resolvedOpts))
-          : normalizedContext
+        : this.context === EMPTY_CONTEXT
+          ? context
+          : undefined
+    if (!input) return undefined
+    if (this.directInputMode === 'plain-only') {
+      const prototype = Object.getPrototypeOf(input)
+      if (prototype === Object.prototype || prototype === null) {
+        return input as Readonly<Record<string, unknown>>
+      }
+      if (isEvaluationEnvironment(input)) return this.createDirectEnvironmentContext(input)
+    } else if (isEvaluationEnvironment(input)) {
+      return this.createDirectEnvironmentContext(input)
+    }
+    return prepareReferenceContext(input, this.directInputMode, 'Evaluation context')
+  }
 
-    return createEvalState(stateContext, this.resolvedOpts)
+  private createDirectEnvironmentContext(
+    environment: EvaluationEnvironment,
+  ): Readonly<Record<string, unknown>> | undefined {
+    const cached = this.directEnvironmentCache?.get(environment)
+    if (cached) return cached
+    if (environment.variables) return undefined
+    const hasData = environment.data !== undefined
+    const hasCapabilities = environment.capabilities !== undefined
+    if (hasData === hasCapabilities) return undefined
+
+    const value = hasData ? environment.data! : environment.capabilities!
+    const policy = hasData
+      ? (environment.dataPolicy ?? this.resolvedOpts.contextPolicy!)
+      : (environment.capabilitiesPolicy ?? {
+          input: 'allow' as const,
+          isolation: 'reference' as const,
+          freeze: 'none' as const,
+        })
+    if ((policy.isolation ?? 'reference') !== 'reference' || (policy.freeze ?? 'none') !== 'none') {
+      return undefined
+    }
+    const prepared = prepareReferenceContext(
+      value,
+      policy.input ?? (hasData ? this.directInputMode : 'allow'),
+      'Evaluation context',
+    )
+    if (!this.directEnvironmentCache) this.directEnvironmentCache = new WeakMap()
+    this.directEnvironmentCache.set(environment, prepared)
+    return prepared
+  }
+
+  private createEnvironment(context: EvaluationInput) {
+    const inputs = context === EMPTY_CONTEXT ? [this.context] : [this.context, context]
+    return createRuntimeEnvironment(inputs, this.resolvedOpts)
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { JSLexer, JSLexError, cookTemplate } from '../src/expr/lexer/index.js'
+import { cookTemplate, JSLexError, JSLexer } from '../src/expr/lexer/index.js'
 
 function compact(source: string) {
   return new JSLexer(source).tokenize().map((token) => ({

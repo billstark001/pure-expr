@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { allowAllCalls } from '../src/expr/index.js'
+import {
+  allowAllCalls,
+  createBindingStore,
+  createEvaluationEnvironment,
+} from '../src/expr/index.js'
 import { compileTemplate, parseTemplate, renderTemplate } from '../src/template/index.js'
 
 // #region Template parser coverage
@@ -149,6 +153,26 @@ describe('template renderer', () => {
         format: (value: string) => value.toUpperCase(),
       }).output,
     ).toBe('Hi ADA')
+  })
+
+  test('compiled templates accept layered environments and committed variables', () => {
+    const values = { count: 1 }
+    const environment = createEvaluationEnvironment({
+      data: { step: 2 },
+      variables: createBindingStore(values),
+    })
+    const compiled = compileTemplate('{{ count += step }} / {{ count }}', {
+      evalOptions: { writes: 'commit' },
+    })
+
+    expect(compiled.render(environment).output).toBe('3 / 3')
+    expect(values.count).toBe(3)
+  })
+
+  test('template compilation rejects transaction writes', () => {
+    expect(() =>
+      compileTemplate('{{ count += 1 }}', { evalOptions: { writes: 'transaction' } }),
+    ).toThrow('does not support')
   })
 
   test('compileTemplate surfaces precomputed parse errors during rendering', () => {

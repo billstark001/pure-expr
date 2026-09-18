@@ -2,6 +2,7 @@ import {
   type CompiledExpression,
   compileExpression,
   type EvalOptions,
+  type EvaluationInput,
   JSEvalError,
   JSLexError,
   JSParseError,
@@ -48,10 +49,7 @@ export interface CompiledTemplateRenderOptions {
 export interface CompiledTemplate {
   readonly source: string
   readonly segments: readonly TemplateSegment[]
-  render(
-    context?: Record<string, unknown>,
-    options?: CompiledTemplateRenderOptions,
-  ): TemplateRenderResult
+  render(context?: EvaluationInput, options?: CompiledTemplateRenderOptions): TemplateRenderResult
 }
 
 // #endregion
@@ -124,7 +122,7 @@ function buildCompiledTemplateSegments(
 function renderCompiledTemplateSegments(
   segments: readonly CompiledTemplateSegment[],
   initialErrors: readonly TemplateRenderError[],
-  context: Record<string, unknown>,
+  context: EvaluationInput,
   format: TemplateFormat,
   strict: boolean,
 ): TemplateRenderResult {
@@ -171,6 +169,11 @@ export function compileTemplate(
   source: string,
   options: CompileTemplateOptions = {},
 ): CompiledTemplate {
+  if (options.evalOptions?.writes === 'transaction') {
+    throw new TypeError(
+      "Template rendering does not support writes: 'transaction'; use 'commit' with an explicit BindingStore",
+    )
+  }
   const parsed = parseTemplate(source, options)
   const compiledSegments = buildCompiledTemplateSegments(parsed.segments, options)
   const defaultFormat = options.format ?? 'text'
@@ -180,7 +183,7 @@ export function compileTemplate(
     source,
     segments: parsed.segments,
     render(
-      context: Record<string, unknown> = {},
+      context: EvaluationInput = {},
       renderOptions: CompiledTemplateRenderOptions = {},
     ): TemplateRenderResult {
       return renderCompiledTemplateSegments(
@@ -197,7 +200,7 @@ export function compileTemplate(
 /** Render a template source string against a scope object. */
 export function renderTemplate(
   source: string,
-  context: Record<string, unknown>,
+  context: EvaluationInput,
   options: RenderTemplateOptions = {},
 ): TemplateRenderResult {
   return compileTemplate(source, options).render(context)

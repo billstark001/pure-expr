@@ -4,7 +4,7 @@ import type {
   ExpressionNode,
   Identifier,
 } from '../node-types.js'
-import { createObjectLiteralResult, getObjectLiteralMode } from './context.js'
+import { createObjectLiteralResult, defineLocalBinding, getObjectLiteralMode } from './context.js'
 import { readProperty } from './operations.js'
 import { BLOCKED_PROPS } from './security.js'
 import { consumeStep } from './state.js'
@@ -17,6 +17,11 @@ import {
   JSEvalError,
   PURE_EXPR_ARROW_BRAND,
 } from './types.js'
+
+function defineArrowBinding(state: EvalState, name: string, value: unknown): void {
+  if (state.directLocals) state.directLocals[name] = value
+  else defineLocalBinding(state.scope!, name, value)
+}
 
 export function createPureExprArrowFunction(
   invoke: (...args: unknown[]) => unknown,
@@ -109,7 +114,7 @@ export function compileArrowBinding(
   switch (binding.type) {
     case 'Identifier':
       return (value, state) => {
-        ;(state.context as Record<string, unknown>)[binding.name] = value
+        defineArrowBinding(state, binding.name, value)
       }
 
     case 'AssignmentPattern': {
@@ -173,7 +178,7 @@ export function compileArrowBinding(
             if (excluded!.has(key) || BLOCKED_PROPS.has(key)) continue
             restValue[key] = source[key]
           }
-          ;(state.context as Record<string, unknown>)[restName] = restValue
+          defineArrowBinding(state, restName, restValue)
         }
       }
     }
@@ -223,7 +228,7 @@ export function bindArrowBinding(
 ): void {
   switch (binding.type) {
     case 'Identifier':
-      ;(state.context as Record<string, unknown>)[binding.name] = value
+      defineArrowBinding(state, binding.name, value)
       return
 
     case 'AssignmentPattern':
@@ -282,7 +287,7 @@ export function bindArrowBinding(
           if (excluded!.has(key) || BLOCKED_PROPS.has(key)) continue
           restValue[key] = source[key]
         }
-        ;(state.context as Record<string, unknown>)[restName] = restValue
+        defineArrowBinding(state, restName, restValue)
       }
       return
     }

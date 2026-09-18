@@ -2,6 +2,7 @@ import type {
   ArrayExpression as PublicArrayExpression,
   ArrayPattern as PublicArrayPattern,
   ArrowFunctionExpression as PublicArrowFunctionExpression,
+  AssignmentExpression as PublicAssignmentExpression,
   AssignmentPattern as PublicAssignmentPattern,
   AssignmentProperty as PublicAssignmentProperty,
   AwaitExpression as PublicAwaitExpression,
@@ -133,6 +134,13 @@ export interface AssignmentPattern
   right: ExpressionNode
 }
 
+export interface AssignmentExpression
+  extends Omit<PublicAssignmentExpression, 'left' | 'right'>,
+    SourceOffsets {
+  left: Identifier
+  right: ExpressionNode
+}
+
 export interface RestElement extends Omit<PublicRestElement, 'argument'>, SourceOffsets {
   argument: BindingPattern
 }
@@ -178,6 +186,7 @@ export type ExpressionNode =
   | Identifier
   | TopicReference
   | ArrowFunctionExpression
+  | AssignmentExpression
   | UnaryExpression
   | AwaitExpression
   | BinaryExpression

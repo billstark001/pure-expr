@@ -23,8 +23,10 @@ import {
 } from './calls.js'
 import { copySpreadProperties, createObjectLiteralResult, getObjectLiteralMode } from './context.js'
 import {
+  applyAssignmentOperator,
   applyBinaryOperator,
   applyUnaryOperator,
+  assignIdentifier,
   evaluateLogicalOperator,
   readProperty,
   resolveIdentifier,
@@ -46,6 +48,8 @@ import {
 
 export interface CompileRuntimeOptions {
   evalArrowFunction(node: ArrowFunctionExpression, state: EvalState): unknown
+  compileIdentifier?: (node: Identifier) => CompiledNodeEvaluator
+  resolveIdentifier?: (node: Identifier, state: EvalState) => unknown
   trackSteps?: boolean
 }
 
@@ -98,8 +102,12 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
           })
         }
         return withCompiledStep(node, () => node.value)
-      case 'Identifier':
-        return withCompiledStep(node, (state) => resolveIdentifier(node, state))
+      case 'Identifier': {
+        const compiled = options.compileIdentifier?.(node)
+        if (compiled) return withCompiledStep(node, compiled)
+        const resolve = options.resolveIdentifier ?? resolveIdentifier
+        return withCompiledStep(node, (state) => resolve(node, state))
+      }
       case 'TopicReference':
         return withCompiledStep(node, (state) => {
           if (state.topics.length === 0) {
@@ -112,6 +120,21 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
         })
       case 'ArrowFunctionExpression':
         return withCompiledStep(node, (state) => evalArrowFunction(node, state))
+      case 'AssignmentExpression': {
+        const right = compileNode(node.right)
+        return withCompiledStep(node, (state) => {
+          const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
+          if (node.operator === '&&=' && !current) return current
+          if (node.operator === '||=' && current) return current
+          if (node.operator === '??=' && current !== null && current !== undefined) return current
+          const rightValue = right(state)
+          const value =
+            node.operator === '&&=' || node.operator === '||=' || node.operator === '??='
+              ? rightValue
+              : applyAssignmentOperator(node.operator, current, rightValue)
+          return assignIdentifier(node.left.name, value, state)
+        })
+      }
       case 'UnaryExpression': {
         const argument = compileNode(node.argument)
         return withCompiledStep(node, (state) => {
