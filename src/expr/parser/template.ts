@@ -1,15 +1,15 @@
 import type { JSToken } from '../lexer.js'
-import type { JSExprNode, JSTemplateNode } from '../node-types.js'
+import type { ExpressionNode, TemplateLiteral } from '../node-types.js'
 import { JSParseError } from './errors.js'
 
 export function buildTemplateAstNode(
   tok: JSToken,
-  tag: JSExprNode | null,
+  tagged: boolean,
   src: string,
-  parseExpressionTokens: (exprTokens: JSToken[]) => JSExprNode,
-): JSTemplateNode {
+  parseExpressionTokens: (exprTokens: JSToken[]) => ExpressionNode,
+): TemplateLiteral {
   const data = tok.tmpl!
-  if (!tag && data.quasis.some((quasi) => quasi.cooked === null)) {
+  if (!tagged && data.quasis.some((quasi) => quasi.cooked === null)) {
     throw new JSParseError('Invalid escape sequence in template literal', tok, src)
   }
 
@@ -27,9 +27,12 @@ export function buildTemplateAstNode(
   })
 
   return {
-    type: 'template',
-    tag,
-    quasis: data.quasis,
+    type: 'TemplateLiteral',
+    quasis: data.quasis.map((quasi, index) => ({
+      type: 'TemplateElement',
+      tail: index === data.quasis.length - 1,
+      value: quasi,
+    })),
     expressions,
     start: tok.start,
     end: tok.end,

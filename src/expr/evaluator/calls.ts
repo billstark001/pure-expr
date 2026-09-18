@@ -1,18 +1,18 @@
 import { defaultCallPermissionPolicy } from '../call-permission.js'
-import type { JSExprNode } from '../node-types.js'
-import { enterCall, leaveCall, consumeStep } from './state.js'
+import type { ExpressionNode } from '../node-types.js'
+import { consumeStep, enterCall, leaveCall } from './state.js'
 import {
+  type EvalState,
+  type JSCallable,
+  type JSCallKind,
   JSEvalError,
   PURE_EXPR_ARROW_BRAND,
-  type EvalState,
-  type JSCallKind,
-  type JSCallable,
 } from './types.js'
 
 export function appendIterableValues(
   target: unknown[],
   source: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): void {
   for (const value of source as Iterable<unknown>) {
@@ -29,7 +29,7 @@ export function ensureCallAllowed(
   kind: JSCallKind,
   fn: JSCallable,
   thisValue: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): void {
   if (state.opts.allowCalls === false) {
@@ -46,7 +46,7 @@ export function ensureCallAllowed(
 export function safeCall0(
   fn: JSCallable,
   thisVal: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): unknown {
   enterCall(node, state)
@@ -61,7 +61,7 @@ export function safeCall1(
   fn: JSCallable,
   thisVal: unknown,
   arg0: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): unknown {
   enterCall(node, state)
@@ -77,7 +77,7 @@ export function safeCall2(
   thisVal: unknown,
   arg0: unknown,
   arg1: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): unknown {
   enterCall(node, state)
@@ -94,7 +94,7 @@ export function safeCall3(
   arg0: unknown,
   arg1: unknown,
   arg2: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): unknown {
   enterCall(node, state)
@@ -112,7 +112,7 @@ export function safeCall4(
   arg1: unknown,
   arg2: unknown,
   arg3: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): unknown {
   enterCall(node, state)
@@ -127,7 +127,7 @@ export function safeCall(
   fn: JSCallable,
   thisVal: unknown,
   args: unknown[],
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): unknown {
   enterCall(node, state)

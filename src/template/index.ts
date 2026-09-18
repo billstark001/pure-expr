@@ -2,22 +2,22 @@
 
 export {
   parseTemplate,
+  type TemplateExpressionSegment,
   type TemplateParseOptions,
+  type TemplateParseResult,
   type TemplateRenderError,
   type TemplateSegment,
-  type TemplateParseResult,
-  type TemplateExpressionSegment,
   type TemplateTextSegment,
 } from './parser.js'
 
 export {
-  compileTemplate,
-  renderTemplate,
   type CompiledTemplate,
   type CompiledTemplateRenderOptions,
   type CompileTemplateOptions,
-  type TemplateFormat,
+  compileTemplate,
   type RenderTemplateOptions,
+  renderTemplate,
+  type TemplateFormat,
   type TemplateRenderResult,
 } from './renderer.js'
 

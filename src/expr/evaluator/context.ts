@@ -1,11 +1,11 @@
-import type { JSExprNode } from '../node-types.js'
-import { consumeStep } from './state.js'
+import type { ExpressionNode } from '../node-types.js'
 import { BLOCKED_PROPS } from './security.js'
+import { consumeStep } from './state.js'
 import {
   DEFAULT_OBJECT_LITERAL_MODE,
   DEFAULT_ROOT_CONTEXT_MODE,
-  JSEvalError,
   type EvalState,
+  JSEvalError,
   type JSEvalOptions,
   type ObjectLiteralMode,
   type RootContextMode,
@@ -173,7 +173,7 @@ export function createObjectLiteralResult(mode: ObjectLiteralMode): Record<strin
 export function copySpreadProperties(
   target: Record<string, unknown>,
   source: unknown,
-  node: JSExprNode,
+  node: ExpressionNode,
   state: EvalState,
 ): void {
   const mode = getObjectLiteralMode(state.opts)

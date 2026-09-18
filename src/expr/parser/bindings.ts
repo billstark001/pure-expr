@@ -1,14 +1,14 @@
 import type { JSToken, JSTokenKind } from '../lexer.js'
 import type {
-  JSArrowFunctionNode,
-  JSArrowParameterNode,
-  JSBindingArrayNode,
-  JSBindingAssignmentNode,
-  JSBindingIdentifierNode,
-  JSBindingNode,
-  JSBindingObjectNode,
-  JSBindingPropertyNode,
-  JSExprNode,
+  ArrayPattern,
+  ArrowFunctionExpression,
+  AssignmentPattern,
+  AssignmentProperty,
+  BindingPattern,
+  ExpressionNode,
+  Identifier,
+  ObjectPattern,
+  RestElement,
 } from '../node-types.js'
 import { JSParseError, type JSParserOptions } from './errors.js'
 import { FORBIDDEN_ARROW_BINDING_IDENTIFIERS } from './grammar.js'
@@ -25,12 +25,10 @@ export interface ParserBindingDelegate {
   lastEnd(): number
   expect(kind: JSTokenKind, msg?: string): JSToken
   expectOp(raw: string, msg?: string): JSToken
-  parseAssignmentExpr(): JSExprNode
-  parseSequenceExpr(): JSExprNode
+  parseAssignmentExpr(): ExpressionNode
+  parseSequenceExpr(): ExpressionNode
   hasLineTerminatorBetween(start: number | undefined, end: number | undefined): boolean
 }
-
-// #region Arrow helpers
 
 export function isArrowFunctionStart(delegate: ParserBindingDelegate): boolean {
   const start = delegate.peek()
@@ -63,7 +61,7 @@ export function isArrowFunctionStart(delegate: ParserBindingDelegate): boolean {
   return false
 }
 
-export function parseArrowFunction(delegate: ParserBindingDelegate): JSArrowFunctionNode {
+export function parseArrowFunction(delegate: ParserBindingDelegate): ArrowFunctionExpression {
   if (delegate.opts.allowArrowFunctions === false) {
     throw new JSParseError(
       'Arrow functions are not enabled in this context',
@@ -73,20 +71,12 @@ export function parseArrowFunction(delegate: ParserBindingDelegate): JSArrowFunc
   }
 
   const start = delegate.peek()!
-  let params: JSArrowParameterNode[]
+  let params: BindingPattern[]
 
   if (start.kind === 'identifier') {
     const param = bindingIdentifierFromToken(delegate, delegate.advance()!)
     delegate.expectOp('=>', 'Expected `=>` after arrow parameter')
-    params = [
-      {
-        type: 'parameter',
-        binding: param,
-        rest: false,
-        start: param.start,
-        end: param.end,
-      },
-    ]
+    params = [param]
   } else {
     params = parseArrowParameterList(delegate)
     delegate.expectOp('=>', 'Expected `=>` after arrow parameters')
@@ -102,24 +92,23 @@ export function parseArrowFunction(delegate: ParserBindingDelegate): JSArrowFunc
 
   const body = delegate.parseAssignmentExpr()
   const node = {
-    type: 'arrow-function',
+    type: 'ArrowFunctionExpression',
     params,
     body,
+    expression: true,
+    generator: false,
+    async: false,
     start: start.start,
     end: delegate.lastEnd(),
-  } satisfies JSArrowFunctionNode
+  } satisfies ArrowFunctionExpression
 
   validateArrowFunction(node, delegate.src)
   return node
 }
 
-// #endregion
-
-// #region Binding parsing
-
-function parseArrowParameterList(delegate: ParserBindingDelegate): JSArrowParameterNode[] {
+function parseArrowParameterList(delegate: ParserBindingDelegate): BindingPattern[] {
   const open = delegate.expectOp('(')
-  const params: JSArrowParameterNode[] = []
+  const params: BindingPattern[] = []
 
   if (delegate.peek()?.kind === 'op' && delegate.peek()!.raw === ')') {
     delegate.advance()
@@ -130,26 +119,19 @@ function parseArrowParameterList(delegate: ParserBindingDelegate): JSArrowParame
     const start = delegate.peek()
     if (!start) throw new JSParseError('Unterminated arrow parameter list', open, delegate.src)
 
-    let rest = false
-    let binding: JSBindingNode
-
     if (start.kind === 'op' && start.raw === '...') {
-      rest = true
       delegate.advance()
-      binding = parseBindingPattern(delegate)
-    } else {
-      binding = parseBindingElement(delegate)
+      const argument = parseBindingPattern(delegate)
+      params.push({
+        type: 'RestElement',
+        argument,
+        start: start.start,
+        end: delegate.lastEnd(),
+      } satisfies RestElement)
+      break
     }
 
-    params.push({
-      type: 'parameter',
-      binding,
-      rest,
-      start: start.start,
-      end: delegate.lastEnd(),
-    })
-
-    if (rest) break
+    params.push(parseBindingElement(delegate))
     if (delegate.peek()?.kind !== 'op' || delegate.peek()!.raw !== ',') break
     delegate.advance()
     if (delegate.peek()?.kind === 'op' && delegate.peek()!.raw === ')') break
@@ -159,22 +141,22 @@ function parseArrowParameterList(delegate: ParserBindingDelegate): JSArrowParame
   return params
 }
 
-function parseBindingElement(delegate: ParserBindingDelegate): JSBindingNode {
+function parseBindingElement(delegate: ParserBindingDelegate): BindingPattern {
   const binding = parseBindingPattern(delegate)
   if (delegate.peek()?.kind === 'op' && delegate.peek()!.raw === '=') {
     delegate.advance()
     return {
-      type: 'binding-assignment',
+      type: 'AssignmentPattern',
       left: binding,
-      defaultValue: delegate.parseAssignmentExpr(),
+      right: delegate.parseAssignmentExpr(),
       start: binding.start,
       end: delegate.lastEnd(),
-    } satisfies JSBindingAssignmentNode
+    } satisfies AssignmentPattern
   }
   return binding
 }
 
-function parseBindingPattern(delegate: ParserBindingDelegate): JSBindingNode {
+function parseBindingPattern(delegate: ParserBindingDelegate): BindingPattern {
   const token = delegate.peek()
   if (!token) {
     throw new JSParseError('Unexpected end of arrow parameter list', undefined, delegate.src)
@@ -193,10 +175,9 @@ function parseBindingPattern(delegate: ParserBindingDelegate): JSBindingNode {
   )
 }
 
-function parseBindingArrayPattern(delegate: ParserBindingDelegate): JSBindingArrayNode {
+function parseBindingArrayPattern(delegate: ParserBindingDelegate): ArrayPattern {
   const open = delegate.expectOp('[')
-  const elements: Array<JSBindingNode | null> = []
-  let rest: JSBindingNode | null = null
+  const elements: Array<BindingPattern | null> = []
 
   while (delegate.peek()?.kind !== 'op' || delegate.peek()!.raw !== ']') {
     if (!delegate.peek()) {
@@ -208,8 +189,13 @@ function parseBindingArrayPattern(delegate: ParserBindingDelegate): JSBindingArr
       continue
     }
     if (delegate.peek()!.kind === 'op' && delegate.peek()!.raw === '...') {
-      delegate.advance()
-      rest = parseBindingPattern(delegate)
+      const spread = delegate.advance()!
+      elements.push({
+        type: 'RestElement',
+        argument: parseBindingPattern(delegate),
+        start: spread.start,
+        end: delegate.lastEnd(),
+      } satisfies RestElement)
       break
     }
 
@@ -220,18 +206,16 @@ function parseBindingArrayPattern(delegate: ParserBindingDelegate): JSBindingArr
 
   delegate.expectOp(']', 'Expected `]` after array binding pattern')
   return {
-    type: 'binding-array',
+    type: 'ArrayPattern',
     elements,
-    rest,
     start: open.start,
     end: delegate.lastEnd(),
   }
 }
 
-function parseBindingObjectPattern(delegate: ParserBindingDelegate): JSBindingObjectNode {
+function parseBindingObjectPattern(delegate: ParserBindingDelegate): ObjectPattern {
   const open = delegate.expectOp('{')
-  const properties: JSBindingPropertyNode[] = []
-  let rest: JSBindingIdentifierNode | null = null
+  const properties: Array<AssignmentProperty | RestElement> = []
 
   while (delegate.peek()?.kind !== 'op' || delegate.peek()!.raw !== '}') {
     if (!delegate.peek()) {
@@ -240,12 +224,16 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): JSBindingOb
 
     if (delegate.peek()!.kind === 'op' && delegate.peek()!.raw === '...') {
       const spread = delegate.advance()!
-      rest = bindingIdentifierFromToken(
+      const argument = bindingIdentifierFromToken(
         delegate,
         delegate.expect('identifier', 'Expected identifier after object rest operator'),
       )
-      rest.start = spread.start
-      rest.end = delegate.lastEnd()
+      properties.push({
+        type: 'RestElement',
+        argument,
+        start: spread.start,
+        end: delegate.lastEnd(),
+      })
       break
     }
 
@@ -254,11 +242,12 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): JSBindingOb
       const key = delegate.parseSequenceExpr()
       delegate.expectOp(']')
       delegate.expectOp(':', 'Expected `:` after computed binding key')
-      const value = parseBindingElement(delegate)
       properties.push({
-        type: 'binding-property',
+        type: 'Property',
         key,
-        value,
+        value: parseBindingElement(delegate),
+        kind: 'init',
+        method: false,
         computed: true,
         shorthand: false,
         start: openBracket.start,
@@ -271,9 +260,11 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): JSBindingOb
       if (delegate.peek()?.kind === 'op' && delegate.peek()!.raw === ':') {
         delegate.advance()
         properties.push({
-          type: 'binding-property',
+          type: 'Property',
           key,
           value: parseBindingElement(delegate),
+          kind: 'init',
+          method: false,
           computed: false,
           shorthand: false,
           start: keyTok.start,
@@ -288,24 +279,25 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): JSBindingOb
           )
         }
 
-        const value = bindingIdentifierFromToken(delegate, keyTok)
-        let binding: JSBindingNode = value
-
+        const identifier = bindingIdentifierFromToken(delegate, keyTok)
+        let value: BindingPattern = identifier
         if (delegate.peek()?.kind === 'op' && delegate.peek()!.raw === '=') {
           delegate.advance()
-          binding = {
-            type: 'binding-assignment',
-            left: value,
-            defaultValue: delegate.parseAssignmentExpr(),
-            start: value.start,
+          value = {
+            type: 'AssignmentPattern',
+            left: identifier,
+            right: delegate.parseAssignmentExpr(),
+            start: identifier.start,
             end: delegate.lastEnd(),
-          } satisfies JSBindingAssignmentNode
+          }
         }
 
         properties.push({
-          type: 'binding-property',
+          type: 'Property',
           key,
-          value: binding,
+          value,
+          kind: 'init',
+          method: false,
           computed: false,
           shorthand: true,
           start: keyTok.start,
@@ -320,51 +312,53 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): JSBindingOb
 
   delegate.expectOp('}', 'Expected `}` after object binding pattern')
   return {
-    type: 'binding-object',
+    type: 'ObjectPattern',
     properties,
-    rest,
     start: open.start,
     end: delegate.lastEnd(),
   }
 }
 
-// #endregion
-
-// #region Token helpers
-
-function bindingIdentifierFromToken(
-  delegate: ParserBindingDelegate,
-  token: JSToken,
-): JSBindingIdentifierNode {
+function bindingIdentifierFromToken(delegate: ParserBindingDelegate, token: JSToken): Identifier {
   if (token.kind !== 'identifier') {
     throw new JSParseError('Expected parameter name', token, delegate.src)
   }
   if (FORBIDDEN_ARROW_BINDING_IDENTIFIERS.has(token.raw)) {
     throw new JSParseError(`'${token.raw}' is not allowed in arrow parameters`, token, delegate.src)
   }
-  return { type: 'binding-identifier', name: token.raw, start: token.start, end: token.end }
+  return { type: 'Identifier', name: token.raw, start: token.start, end: token.end }
 }
 
-function tokenToPropertyKeyNode(token: JSToken): JSExprNode {
+function tokenToPropertyKeyNode(token: JSToken): ExpressionNode {
+  const offsets = { start: token.start, end: token.end }
   if (token.kind === 'string') {
     return {
-      type: 'literal',
+      type: 'Literal',
       value: parseStringValue(token.raw),
       raw: token.raw,
-      start: token.start,
-      end: token.end,
+      ...offsets,
     }
   }
-  if (token.kind === 'number' || token.kind === 'bigint') {
+  if (token.kind === 'number') {
     return {
-      type: 'literal',
-      value: parseFloat(token.raw.replace(/_/g, '').replace(/n$/, '')),
+      type: 'Literal',
+      value: Number(token.raw.replace(/_/g, '')),
       raw: token.raw,
-      start: token.start,
-      end: token.end,
+      ...offsets,
     }
   }
-  return { type: 'identifier', name: token.raw, start: token.start, end: token.end }
+  if (token.kind === 'bigint') {
+    const rawValue = token.raw.replace(/_/g, '').slice(0, -1)
+    const value = BigInt(rawValue)
+    return { type: 'Literal', value, bigint: value.toString(), raw: token.raw, ...offsets }
+  }
+  if (token.kind === 'boolean') {
+    return { type: 'Literal', value: token.raw === 'true', raw: token.raw, ...offsets }
+  }
+  if (token.kind === 'null') {
+    return { type: 'Literal', value: null, raw: token.raw, ...offsets }
+  }
+  return { type: 'Identifier', name: token.raw, ...offsets }
 }
 
 function findMatchingParenIndex(tokens: readonly JSToken[], startIndex: number): number {
@@ -382,5 +376,3 @@ function findMatchingParenIndex(tokens: readonly JSToken[], startIndex: number):
 
   return -1
 }
-
-// #endregion

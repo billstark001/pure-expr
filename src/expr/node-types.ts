@@ -1,254 +1,212 @@
-// #region Core AST node types
+import type {
+  BaseNode,
+  ArrayExpression as ESTreeArrayExpression,
+  ArrayPattern as ESTreeArrayPattern,
+  ArrowFunctionExpression as ESTreeArrowFunctionExpression,
+  AssignmentPattern as ESTreeAssignmentPattern,
+  AssignmentProperty as ESTreeAssignmentProperty,
+  AwaitExpression as ESTreeAwaitExpression,
+  BinaryExpression as ESTreeBinaryExpression,
+  CallExpression as ESTreeCallExpression,
+  ChainExpression as ESTreeChainExpression,
+  ConditionalExpression as ESTreeConditionalExpression,
+  Identifier as ESTreeIdentifier,
+  Literal as ESTreeLiteral,
+  LogicalExpression as ESTreeLogicalExpression,
+  MemberExpression as ESTreeMemberExpression,
+  ObjectExpression as ESTreeObjectExpression,
+  ObjectPattern as ESTreeObjectPattern,
+  Property as ESTreeProperty,
+  RestElement as ESTreeRestElement,
+  SequenceExpression as ESTreeSequenceExpression,
+  SpreadElement as ESTreeSpreadElement,
+  TaggedTemplateExpression as ESTreeTaggedTemplateExpression,
+  TemplateElement as ESTreeTemplateElement,
+  TemplateLiteral as ESTreeTemplateLiteral,
+  UnaryExpression as ESTreeUnaryExpression,
+} from 'estree'
 
-/** Literal primitive value node. */
-export interface JSLiteralNode {
-  type: 'literal'
-  value: null | undefined | boolean | number | bigint | string
-  raw: string
+/** Source offsets retained in addition to ESTree's optional `loc` and `range`. */
+export interface SourceOffsets {
   start?: number
   end?: number
 }
 
-/** Regular expression literal node. */
-export interface JSRegexNode {
-  type: 'regex'
-  pattern: string
-  flags: string
-  raw: string
-  start?: number
-  end?: number
+export type AstNode = BaseNode & SourceOffsets
+
+export type Literal = ESTreeLiteral & SourceOffsets
+
+export interface Identifier extends ESTreeIdentifier, SourceOffsets {}
+
+export interface TopicReference extends BaseNode, SourceOffsets {
+  type: 'TopicReference'
 }
 
-/** Identifier lookup node. */
-export interface JSIdentifierNode {
-  type: 'identifier'
-  name: string
-  start?: number
-  end?: number
+export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument'>, SourceOffsets {
+  argument: ExpressionNode
 }
 
-/** Hack-pipe topic reference node. */
-export interface JSTopicReferenceNode {
-  type: 'topic'
-  start?: number
-  end?: number
+export interface AwaitExpression extends Omit<ESTreeAwaitExpression, 'argument'>, SourceOffsets {
+  argument: ExpressionNode
 }
 
-/** Binding identifier used in arrow parameters and destructuring patterns. */
-export interface JSBindingIdentifierNode {
-  type: 'binding-identifier'
-  name: string
-  start?: number
-  end?: number
+export interface BinaryExpression
+  extends Omit<ESTreeBinaryExpression, 'left' | 'right'>,
+    SourceOffsets {
+  left: ExpressionNode
+  right: ExpressionNode
 }
 
-/** Binding node with a default initializer. */
-export interface JSBindingAssignmentNode {
-  type: 'binding-assignment'
-  left: JSBindingNode
-  defaultValue: JSExprNode
-  start?: number
-  end?: number
+export interface LogicalExpression
+  extends Omit<ESTreeLogicalExpression, 'left' | 'right'>,
+    SourceOffsets {
+  left: ExpressionNode
+  right: ExpressionNode
 }
 
-/** Array binding pattern node. */
-export interface JSBindingArrayNode {
-  type: 'binding-array'
-  elements: Array<JSBindingNode | null>
-  rest: JSBindingNode | null
-  start?: number
-  end?: number
+export interface ConditionalExpression
+  extends Omit<ESTreeConditionalExpression, 'test' | 'consequent' | 'alternate'>,
+    SourceOffsets {
+  test: ExpressionNode
+  consequent: ExpressionNode
+  alternate: ExpressionNode
 }
 
-/** One object binding property entry. */
-export interface JSBindingPropertyNode {
-  type: 'binding-property'
-  key: JSExprNode
-  value: JSBindingNode
-  computed: boolean
-  shorthand: boolean
-  start?: number
-  end?: number
+export interface MemberExpression
+  extends Omit<ESTreeMemberExpression, 'object' | 'property'>,
+    SourceOffsets {
+  object: ExpressionNode
+  property: ExpressionNode
 }
 
-/** Object binding pattern node. */
-export interface JSBindingObjectNode {
-  type: 'binding-object'
-  properties: JSBindingPropertyNode[]
-  rest: JSBindingIdentifierNode | null
-  start?: number
-  end?: number
+export interface CallExpression
+  extends Omit<ESTreeCallExpression, 'callee' | 'arguments'>,
+    SourceOffsets {
+  type: 'CallExpression'
+  callee: ExpressionNode
+  arguments: Array<ExpressionNode | SpreadElement>
+  optional: boolean
 }
 
-/** Any binding node accepted in arrow parameters. */
-export type JSBindingNode =
-  | JSBindingIdentifierNode
-  | JSBindingAssignmentNode
-  | JSBindingArrayNode
-  | JSBindingObjectNode
-
-/** One formal arrow parameter. */
-export interface JSArrowParameterNode {
-  type: 'parameter'
-  binding: JSBindingNode
-  rest: boolean
-  start?: number
-  end?: number
+export interface ChainExpression extends Omit<ESTreeChainExpression, 'expression'>, SourceOffsets {
+  expression: MemberExpression | CallExpression
 }
 
-/** Unary operator node. */
-export interface JSUnaryNode {
-  type: 'unary'
-  operator: string
-  operand: JSExprNode
-  start?: number
-  end?: number
+export interface ArrayExpression extends Omit<ESTreeArrayExpression, 'elements'>, SourceOffsets {
+  elements: Array<ExpressionNode | SpreadElement | null>
 }
 
-/** Binary operator node. */
-export interface JSBinaryNode {
-  type: 'binary'
-  operator: string
-  left: JSExprNode
-  right: JSExprNode
-  start?: number
-  end?: number
+export interface Property
+  extends Omit<ESTreeProperty, 'key' | 'value' | 'kind' | 'method'>,
+    SourceOffsets {
+  key: ExpressionNode
+  value: ExpressionNode
+  kind: 'init'
+  method: false
 }
 
-/** Short-circuit logical operator node. */
-export interface JSLogicalNode {
-  type: 'logical'
-  operator: '&&' | '||' | '??'
-  left: JSExprNode
-  right: JSExprNode
-  start?: number
-  end?: number
+export interface ObjectExpression
+  extends Omit<ESTreeObjectExpression, 'properties'>,
+    SourceOffsets {
+  properties: Array<Property | SpreadElement>
 }
 
-/** Ternary conditional node. */
-export interface JSConditionalNode {
-  type: 'conditional'
-  test: JSExprNode
-  consequent: JSExprNode
-  alternate: JSExprNode
-  start?: number
-  end?: number
+export interface SpreadElement extends Omit<ESTreeSpreadElement, 'argument'>, SourceOffsets {
+  argument: ExpressionNode
 }
 
-/** Property access node. */
-export interface JSMemberNode {
-  type: 'member'
-  object: JSExprNode
-  property: JSExprNode
-  computed: boolean // obj[x] vs obj.x
-  optional: boolean // ?.
-  start?: number
-  end?: number
+export interface SequenceExpression
+  extends Omit<ESTreeSequenceExpression, 'expressions'>,
+    SourceOffsets {
+  expressions: ExpressionNode[]
 }
 
-/** Function or method call node. */
-export interface JSCallNode {
-  type: 'call'
-  callee: JSExprNode
-  args: Array<JSExprNode | JSSpreadNode>
-  optional: boolean // ?.()
-  start?: number
-  end?: number
+export interface TemplateElement extends ESTreeTemplateElement, SourceOffsets {}
+
+export interface TemplateLiteral
+  extends Omit<ESTreeTemplateLiteral, 'quasis' | 'expressions'>,
+    SourceOffsets {
+  quasis: TemplateElement[]
+  expressions: ExpressionNode[]
 }
 
-/** Array literal node. */
-export interface JSArrayNode {
-  type: 'array'
-  elements: Array<JSExprNode | JSSpreadNode | null>
-  start?: number
-  end?: number
+export interface TaggedTemplateExpression
+  extends Omit<ESTreeTaggedTemplateExpression, 'tag' | 'quasi'>,
+    SourceOffsets {
+  tag: ExpressionNode
+  quasi: TemplateLiteral
 }
 
-/** Object property entry node. */
-export interface JSObjectPropNode {
-  type: 'property'
-  key: JSExprNode
-  value: JSExprNode
-  computed: boolean
-  shorthand: boolean
-  start?: number
-  end?: number
+export interface AssignmentPattern
+  extends Omit<ESTreeAssignmentPattern, 'left' | 'right'>,
+    SourceOffsets {
+  left: BindingPattern
+  right: ExpressionNode
 }
 
-/** Object literal node. */
-export interface JSObjectNode {
-  type: 'object'
-  props: Array<JSObjectPropNode | JSSpreadNode>
-  start?: number
-  end?: number
+export interface RestElement extends Omit<ESTreeRestElement, 'argument'>, SourceOffsets {
+  argument: BindingPattern
 }
 
-/** Spread element or property node. */
-export interface JSSpreadNode {
-  type: 'spread'
-  argument: JSExprNode
-  start?: number
-  end?: number
+export interface ArrayPattern extends Omit<ESTreeArrayPattern, 'elements'>, SourceOffsets {
+  elements: Array<BindingPattern | null>
 }
 
-/** Template literal node. */
-export interface JSTemplateNode {
-  type: 'template'
-  tag: JSExprNode | null
-  quasis: Array<{ raw: string; cooked: string | null }>
-  expressions: JSExprNode[]
-  start?: number
-  end?: number
+export interface AssignmentProperty
+  extends Omit<ESTreeAssignmentProperty, 'key' | 'value' | 'kind' | 'method'>,
+    SourceOffsets {
+  key: ExpressionNode
+  value: BindingPattern
+  kind: 'init'
+  method: false
 }
 
-/** Comma-expression sequence node. */
-export interface JSSequenceNode {
-  type: 'sequence'
-  expressions: JSExprNode[]
-  start?: number
-  end?: number
+export interface ObjectPattern extends Omit<ESTreeObjectPattern, 'properties'>, SourceOffsets {
+  properties: Array<AssignmentProperty | RestElement>
 }
 
-/** Pipeline operator node. */
-export interface JSPipelineNode {
-  type: 'pipeline'
-  left: JSExprNode
-  right: JSExprNode
-  start?: number
-  end?: number
+export type BindingPattern =
+  | Identifier
+  | AssignmentPattern
+  | RestElement
+  | ArrayPattern
+  | ObjectPattern
+
+export interface ArrowFunctionExpression
+  extends Omit<ESTreeArrowFunctionExpression, 'params' | 'body'>,
+    SourceOffsets {
+  params: BindingPattern[]
+  body: ExpressionNode
+  expression: true
+  generator: false
+  async: false
 }
 
-/** Concise-body arrow function node. */
-export interface JSArrowFunctionNode {
-  type: 'arrow-function'
-  params: JSArrowParameterNode[]
-  body: JSExprNode
-  start?: number
-  end?: number
+/** Explicit ESTree extension for Hack-style pipelines. */
+export interface PipelineExpression extends BaseNode, SourceOffsets {
+  type: 'PipelineExpression'
+  left: ExpressionNode
+  right: ExpressionNode
 }
 
-// #endregion
-
-// #region AST union
-
-/** Any AST node produced by the expression parser. */
-export type JSExprNode =
-  | JSLiteralNode
-  | JSRegexNode
-  | JSIdentifierNode
-  | JSTopicReferenceNode
-  | JSArrowFunctionNode
-  | JSUnaryNode
-  | JSBinaryNode
-  | JSLogicalNode
-  | JSConditionalNode
-  | JSMemberNode
-  | JSCallNode
-  | JSArrayNode
-  | JSObjectNode
-  | JSSpreadNode
-  | JSTemplateNode
-  | JSSequenceNode
-  | JSPipelineNode
-
-// #endregion
+/** The restricted ESTree expression union produced and accepted by pure-expr. */
+export type ExpressionNode =
+  | Literal
+  | Identifier
+  | TopicReference
+  | ArrowFunctionExpression
+  | UnaryExpression
+  | AwaitExpression
+  | BinaryExpression
+  | LogicalExpression
+  | ConditionalExpression
+  | MemberExpression
+  | CallExpression
+  | ChainExpression
+  | ArrayExpression
+  | ObjectExpression
+  | SpreadElement
+  | TemplateLiteral
+  | TaggedTemplateExpression
+  | SequenceExpression
+  | PipelineExpression

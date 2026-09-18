@@ -1,14 +1,19 @@
 import type { JSToken } from '../lexer.js'
-import type { JSArrowFunctionNode, JSBindingNode, JSExprNode } from '../node-types.js'
-import { FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS } from './grammar.js'
+import type {
+  ArrowFunctionExpression,
+  BindingPattern,
+  ExpressionNode,
+  Property,
+} from '../node-types.js'
 import { JSParseError } from './errors.js'
+import { FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS } from './grammar.js'
 
 export function assertValidLogicalMixing(
   operator: '&&' | '||' | '??',
-  left: JSExprNode,
-  right: JSExprNode,
+  left: ExpressionNode,
+  right: ExpressionNode,
   token: JSToken,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
   src: string,
 ): void {
   const mixesNullishWithBoolean =
@@ -23,11 +28,11 @@ export function assertValidLogicalMixing(
   }
 }
 
-export function validateArrowFunction(node: JSArrowFunctionNode, src: string): void {
+export function validateArrowFunction(node: ArrowFunctionExpression, src: string): void {
   const boundNames = new Set<string>()
 
   for (const param of node.params) {
-    for (const name of collectBoundNames(param.binding)) {
+    for (const name of collectBoundNames(param)) {
       if (boundNames.has(name)) {
         throw new JSParseError(
           `Duplicate parameter name '${name}' in arrow function`,
@@ -37,74 +42,84 @@ export function validateArrowFunction(node: JSArrowFunctionNode, src: string): v
       }
       boundNames.add(name)
     }
-
-    validateBindingArrowReferences(param.binding, src)
+    validateBindingArrowReferences(param, src)
   }
 
   validateArrowReferences(node.body, src)
 }
 
 export function validateTopicUsage(
-  node: JSExprNode,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  node: ExpressionNode,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
   src: string,
 ): void {
   validateExpressionTopicUsage(node, false, parenthesizedNodes, src)
 }
 
-function collectBoundNames(binding: JSBindingNode): string[] {
+function collectBoundNames(binding: BindingPattern): string[] {
   switch (binding.type) {
-    case 'binding-identifier':
+    case 'Identifier':
       return [binding.name]
-    case 'binding-assignment':
+    case 'AssignmentPattern':
       return collectBoundNames(binding.left)
-    case 'binding-array': {
+    case 'RestElement':
+      return collectBoundNames(binding.argument)
+    case 'ArrayPattern': {
       const names: string[] = []
       for (const element of binding.elements) {
         if (element) names.push(...collectBoundNames(element))
       }
-      if (binding.rest) names.push(...collectBoundNames(binding.rest))
       return names
     }
-    case 'binding-object': {
+    case 'ObjectPattern': {
       const names: string[] = []
-      for (const prop of binding.properties) names.push(...collectBoundNames(prop.value))
-      if (binding.rest) names.push(binding.rest.name)
+      for (const property of binding.properties) {
+        names.push(
+          ...collectBoundNames(
+            property.type === 'RestElement' ? property.argument : property.value,
+          ),
+        )
+      }
       return names
     }
   }
 }
 
-function validateBindingArrowReferences(binding: JSBindingNode, src: string): void {
+function validateBindingArrowReferences(binding: BindingPattern, src: string): void {
   switch (binding.type) {
-    case 'binding-identifier':
+    case 'Identifier':
       return
-    case 'binding-assignment':
+    case 'AssignmentPattern':
       validateBindingArrowReferences(binding.left, src)
-      validateArrowReferences(binding.defaultValue, src)
+      validateArrowReferences(binding.right, src)
       return
-    case 'binding-array':
+    case 'RestElement':
+      validateBindingArrowReferences(binding.argument, src)
+      return
+    case 'ArrayPattern':
       for (const element of binding.elements) {
         if (element) validateBindingArrowReferences(element, src)
       }
-      if (binding.rest) validateBindingArrowReferences(binding.rest, src)
       return
-    case 'binding-object':
-      for (const prop of binding.properties) {
-        if (prop.computed) validateArrowReferences(prop.key, src)
-        validateBindingArrowReferences(prop.value, src)
+    case 'ObjectPattern':
+      for (const property of binding.properties) {
+        if (property.type === 'RestElement') {
+          validateBindingArrowReferences(property.argument, src)
+        } else {
+          if (property.computed) validateArrowReferences(property.key, src)
+          validateBindingArrowReferences(property.value, src)
+        }
       }
       return
   }
 }
 
-function validateArrowReferences(node: JSExprNode, src: string): void {
+function validateArrowReferences(node: ExpressionNode, src: string): void {
   switch (node.type) {
-    case 'literal':
-    case 'regex':
-    case 'topic':
+    case 'Literal':
+    case 'TopicReference':
       return
-    case 'identifier':
+    case 'Identifier':
       if (FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS.has(node.name)) {
         throw new JSParseError(
           `Arrow functions do not support '${node.name}' in this context`,
@@ -113,73 +128,76 @@ function validateArrowReferences(node: JSExprNode, src: string): void {
         )
       }
       return
-    case 'arrow-function':
+    case 'ArrowFunctionExpression':
       return
-    case 'unary':
-      validateArrowReferences(node.operand, src)
+    case 'UnaryExpression':
+    case 'AwaitExpression':
+      validateArrowReferences(node.argument, src)
       return
-    case 'binary':
-    case 'logical':
+    case 'BinaryExpression':
+    case 'LogicalExpression':
+    case 'PipelineExpression':
       validateArrowReferences(node.left, src)
       validateArrowReferences(node.right, src)
       return
-    case 'conditional':
+    case 'ConditionalExpression':
       validateArrowReferences(node.test, src)
       validateArrowReferences(node.consequent, src)
       validateArrowReferences(node.alternate, src)
       return
-    case 'member':
+    case 'MemberExpression':
       validateArrowReferences(node.object, src)
       if (node.computed) validateArrowReferences(node.property, src)
       return
-    case 'call':
+    case 'CallExpression':
       validateArrowReferences(node.callee, src)
-      for (const arg of node.args) validateArrowReferences(arg, src)
+      for (const argument of node.arguments) validateArrowReferences(argument, src)
       return
-    case 'array':
+    case 'ChainExpression':
+      validateArrowReferences(node.expression, src)
+      return
+    case 'ArrayExpression':
       for (const element of node.elements) {
         if (element) validateArrowReferences(element, src)
       }
       return
-    case 'object':
-      for (const prop of node.props) {
-        if (prop.type === 'spread') {
-          validateArrowReferences(prop.argument, src)
+    case 'ObjectExpression':
+      for (const property of node.properties) {
+        if (property.type === 'SpreadElement') {
+          validateArrowReferences(property.argument, src)
         } else {
-          if (prop.computed) validateArrowReferences(prop.key, src)
-          validateArrowReferences(prop.value, src)
+          if (property.computed) validateArrowReferences(property.key, src)
+          validateArrowReferences(property.value, src)
         }
       }
       return
-    case 'spread':
+    case 'SpreadElement':
       validateArrowReferences(node.argument, src)
       return
-    case 'template':
-      if (node.tag) validateArrowReferences(node.tag, src)
+    case 'TemplateLiteral':
       for (const expression of node.expressions) validateArrowReferences(expression, src)
       return
-    case 'sequence':
-      for (const expression of node.expressions) validateArrowReferences(expression, src)
+    case 'TaggedTemplateExpression':
+      validateArrowReferences(node.tag, src)
+      validateArrowReferences(node.quasi, src)
       return
-    case 'pipeline':
-      validateArrowReferences(node.left, src)
-      validateArrowReferences(node.right, src)
+    case 'SequenceExpression':
+      for (const expression of node.expressions) validateArrowReferences(expression, src)
       return
   }
 }
 
 function validateExpressionTopicUsage(
-  node: JSExprNode,
+  node: ExpressionNode,
   allowTopic: boolean,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
   src: string,
 ): number {
   switch (node.type) {
-    case 'literal':
-    case 'regex':
-    case 'identifier':
+    case 'Literal':
+    case 'Identifier':
       return 0
-    case 'topic':
+    case 'TopicReference':
       if (!allowTopic) {
         throw new JSParseError(
           "Topic reference '%' is only allowed inside a pipeline body",
@@ -188,85 +206,87 @@ function validateExpressionTopicUsage(
         )
       }
       return 1
-    case 'arrow-function': {
+    case 'ArrowFunctionExpression': {
       let topicCount = 0
       for (const param of node.params) {
-        topicCount += validateBindingTopicUsage(param.binding, allowTopic, parenthesizedNodes, src)
+        topicCount += validateBindingTopicUsage(param, allowTopic, parenthesizedNodes, src)
       }
-      topicCount += validateExpressionTopicUsage(node.body, allowTopic, parenthesizedNodes, src)
-      return topicCount
+      return (
+        topicCount + validateExpressionTopicUsage(node.body, allowTopic, parenthesizedNodes, src)
+      )
     }
-    case 'unary':
-      return validateExpressionTopicUsage(node.operand, allowTopic, parenthesizedNodes, src)
-    case 'binary':
-    case 'logical':
+    case 'UnaryExpression':
+    case 'AwaitExpression':
+      return validateExpressionTopicUsage(node.argument, allowTopic, parenthesizedNodes, src)
+    case 'BinaryExpression':
+    case 'LogicalExpression':
       return (
         validateExpressionTopicUsage(node.left, allowTopic, parenthesizedNodes, src) +
         validateExpressionTopicUsage(node.right, allowTopic, parenthesizedNodes, src)
       )
-    case 'conditional':
+    case 'ConditionalExpression':
       return (
         validateExpressionTopicUsage(node.test, allowTopic, parenthesizedNodes, src) +
         validateExpressionTopicUsage(node.consequent, allowTopic, parenthesizedNodes, src) +
         validateExpressionTopicUsage(node.alternate, allowTopic, parenthesizedNodes, src)
       )
-    case 'member':
+    case 'MemberExpression':
       return (
         validateExpressionTopicUsage(node.object, allowTopic, parenthesizedNodes, src) +
         validateExpressionTopicUsage(node.property, allowTopic, parenthesizedNodes, src)
       )
-    case 'call': {
+    case 'CallExpression': {
       let topicCount = validateExpressionTopicUsage(
         node.callee,
         allowTopic,
         parenthesizedNodes,
         src,
       )
-      for (const arg of node.args) {
-        topicCount += validateExpressionTopicUsage(arg, allowTopic, parenthesizedNodes, src)
+      for (const argument of node.arguments) {
+        topicCount += validateExpressionTopicUsage(argument, allowTopic, parenthesizedNodes, src)
       }
       return topicCount
     }
-    case 'array': {
+    case 'ChainExpression':
+      return validateExpressionTopicUsage(node.expression, allowTopic, parenthesizedNodes, src)
+    case 'ArrayExpression': {
       let topicCount = 0
       for (const element of node.elements) {
-        if (element !== null) {
+        if (element) {
           topicCount += validateExpressionTopicUsage(element, allowTopic, parenthesizedNodes, src)
         }
       }
       return topicCount
     }
-    case 'object': {
+    case 'ObjectExpression': {
       let topicCount = 0
-      for (const prop of node.props) {
-        topicCount +=
-          prop.type === 'spread'
-            ? validateExpressionTopicUsage(prop.argument, allowTopic, parenthesizedNodes, src)
-            : (prop.computed
-                ? validateExpressionTopicUsage(prop.key, allowTopic, parenthesizedNodes, src)
-                : 0) + validateExpressionTopicUsage(prop.value, allowTopic, parenthesizedNodes, src)
+      for (const property of node.properties) {
+        topicCount += validatePropertyTopicUsage(property, allowTopic, parenthesizedNodes, src)
       }
       return topicCount
     }
-    case 'spread':
+    case 'SpreadElement':
       return validateExpressionTopicUsage(node.argument, allowTopic, parenthesizedNodes, src)
-    case 'template': {
-      let topicCount = node.tag
-        ? validateExpressionTopicUsage(node.tag, allowTopic, parenthesizedNodes, src)
-        : 0
-      for (const expression of node.expressions) {
-        topicCount += validateExpressionTopicUsage(expression, allowTopic, parenthesizedNodes, src)
-      }
-      return topicCount
-    }
-    case 'sequence': {
+    case 'TemplateLiteral': {
       let topicCount = 0
       for (const expression of node.expressions) {
         topicCount += validateExpressionTopicUsage(expression, allowTopic, parenthesizedNodes, src)
       }
       return topicCount
     }
-    case 'pipeline': {
+    case 'TaggedTemplateExpression':
+      return (
+        validateExpressionTopicUsage(node.tag, allowTopic, parenthesizedNodes, src) +
+        validateExpressionTopicUsage(node.quasi, allowTopic, parenthesizedNodes, src)
+      )
+    case 'SequenceExpression': {
+      let topicCount = 0
+      for (const expression of node.expressions) {
+        topicCount += validateExpressionTopicUsage(expression, allowTopic, parenthesizedNodes, src)
+      }
+      return topicCount
+    }
+    case 'PipelineExpression': {
       const outerTopicCount = validateExpressionTopicUsage(
         node.left,
         allowTopic,
@@ -279,39 +299,73 @@ function validateExpressionTopicUsage(
   }
 }
 
-function validateBindingTopicUsage(
-  binding: JSBindingNode,
+function validatePropertyTopicUsage(
+  property: Property | { type: 'SpreadElement'; argument: ExpressionNode },
   allowTopic: boolean,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
+  src: string,
+): number {
+  if (property.type === 'SpreadElement') {
+    return validateExpressionTopicUsage(property.argument, allowTopic, parenthesizedNodes, src)
+  }
+  return (
+    (property.computed
+      ? validateExpressionTopicUsage(property.key, allowTopic, parenthesizedNodes, src)
+      : 0) + validateExpressionTopicUsage(property.value, allowTopic, parenthesizedNodes, src)
+  )
+}
+
+function validateBindingTopicUsage(
+  binding: BindingPattern,
+  allowTopic: boolean,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
   src: string,
 ): number {
   switch (binding.type) {
-    case 'binding-identifier':
+    case 'Identifier':
       return 0
-    case 'binding-assignment':
+    case 'AssignmentPattern':
       return (
         validateBindingTopicUsage(binding.left, allowTopic, parenthesizedNodes, src) +
-        validateExpressionTopicUsage(binding.defaultValue, allowTopic, parenthesizedNodes, src)
+        validateExpressionTopicUsage(binding.right, allowTopic, parenthesizedNodes, src)
       )
-    case 'binding-array': {
+    case 'RestElement':
+      return validateBindingTopicUsage(binding.argument, allowTopic, parenthesizedNodes, src)
+    case 'ArrayPattern': {
       let topicCount = 0
       for (const element of binding.elements) {
         if (element) {
           topicCount += validateBindingTopicUsage(element, allowTopic, parenthesizedNodes, src)
         }
       }
-      if (binding.rest) {
-        topicCount += validateBindingTopicUsage(binding.rest, allowTopic, parenthesizedNodes, src)
-      }
       return topicCount
     }
-    case 'binding-object': {
+    case 'ObjectPattern': {
       let topicCount = 0
-      for (const prop of binding.properties) {
-        if (prop.computed) {
-          topicCount += validateExpressionTopicUsage(prop.key, allowTopic, parenthesizedNodes, src)
+      for (const property of binding.properties) {
+        if (property.type === 'RestElement') {
+          topicCount += validateBindingTopicUsage(
+            property.argument,
+            allowTopic,
+            parenthesizedNodes,
+            src,
+          )
+        } else {
+          if (property.computed) {
+            topicCount += validateExpressionTopicUsage(
+              property.key,
+              allowTopic,
+              parenthesizedNodes,
+              src,
+            )
+          }
+          topicCount += validateBindingTopicUsage(
+            property.value,
+            allowTopic,
+            parenthesizedNodes,
+            src,
+          )
         }
-        topicCount += validateBindingTopicUsage(prop.value, allowTopic, parenthesizedNodes, src)
       }
       return topicCount
     }
@@ -319,16 +373,16 @@ function validateBindingTopicUsage(
 }
 
 function validatePipeBodyTopicUsage(
-  node: JSExprNode,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  node: ExpressionNode,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
   src: string,
 ): void {
   if (
-    (node.type === 'conditional' || node.type === 'arrow-function') &&
+    (node.type === 'ConditionalExpression' || node.type === 'ArrowFunctionExpression') &&
     !parenthesizedNodes.has(node)
   ) {
     throw new JSParseError(
-      `Hack pipe body cannot be an unparenthesized ${node.type === 'conditional' ? 'conditional expression' : 'arrow function'}`,
+      `Hack pipe body cannot be an unparenthesized ${node.type === 'ConditionalExpression' ? 'conditional expression' : 'arrow function'}`,
       undefined,
       src,
     )
@@ -340,19 +394,21 @@ function validatePipeBodyTopicUsage(
 }
 
 function isUnparenthesizedNullish(
-  node: JSExprNode,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  node: ExpressionNode,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
 ): boolean {
-  return !parenthesizedNodes.has(node) && node.type === 'logical' && node.operator === '??'
+  return (
+    !parenthesizedNodes.has(node) && node.type === 'LogicalExpression' && node.operator === '??'
+  )
 }
 
 function isUnparenthesizedShortCircuit(
-  node: JSExprNode,
-  parenthesizedNodes: WeakSet<JSExprNode>,
+  node: ExpressionNode,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
 ): boolean {
   return (
     !parenthesizedNodes.has(node) &&
-    node.type === 'logical' &&
+    node.type === 'LogicalExpression' &&
     (node.operator === '&&' || node.operator === '||')
   )
 }

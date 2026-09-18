@@ -1,16 +1,22 @@
-import type { JSArrowParameterNode, JSBindingNode, JSExprNode } from '../node-types.js'
+import type {
+  ArrowFunctionExpression,
+  BindingPattern,
+  ExpressionNode,
+  Identifier,
+} from '../node-types.js'
 import { createObjectLiteralResult, getObjectLiteralMode } from './context.js'
+import { readProperty } from './operations.js'
+import { BLOCKED_PROPS } from './security.js'
 import { consumeStep } from './state.js'
 import {
-  JSEvalError,
-  PURE_EXPR_ARROW_BRAND,
   type CompiledArrowBinding,
   type CompiledArrowParameterEvaluator,
   type CompiledNodeEvaluator,
   type EvalState,
   type JSCallable,
+  JSEvalError,
+  PURE_EXPR_ARROW_BRAND,
 } from './types.js'
-import { BLOCKED_PROPS } from './security.js'
 
 export function createPureExprArrowFunction(
   invoke: (...args: unknown[]) => unknown,
@@ -39,53 +45,44 @@ export function createPureExprArrowFunction(
   return fn as JSCallable
 }
 
-export function getArrowExpectedArgumentCount(params: JSArrowParameterNode[]): number {
+export function getArrowExpectedArgumentCount(params: BindingPattern[]): number {
   let count = 0
-
   for (const param of params) {
-    if (param.rest || bindingHasInitializer(param.binding)) return count
+    if (param.type === 'RestElement' || param.type === 'AssignmentPattern') return count
     count += 1
   }
-
   return count
 }
 
-function bindingHasInitializer(binding: JSBindingNode): boolean {
-  switch (binding.type) {
-    case 'binding-identifier':
-      return false
-    case 'binding-assignment':
-      return true
-    case 'binding-array':
-      return binding.elements.some((element) => element !== null && bindingHasInitializer(element))
-    case 'binding-object':
-      return binding.properties.some((prop) => bindingHasInitializer(prop.value))
-  }
-}
-
-export function collectArrowBoundNames(params: JSArrowParameterNode[]): string[] {
+export function collectArrowBoundNames(params: BindingPattern[]): string[] {
   const names: string[] = []
-  for (const param of params) collectBindingNames(param.binding, names)
+  for (const param of params) collectBindingNames(param, names)
   return names
 }
 
-function collectBindingNames(binding: JSBindingNode, names: string[]): void {
+function collectBindingNames(binding: BindingPattern, names: string[]): void {
   switch (binding.type) {
-    case 'binding-identifier':
+    case 'Identifier':
       names.push(binding.name)
       return
-    case 'binding-assignment':
+    case 'AssignmentPattern':
       collectBindingNames(binding.left, names)
       return
-    case 'binding-array':
+    case 'RestElement':
+      collectBindingNames(binding.argument, names)
+      return
+    case 'ArrayPattern':
       for (const element of binding.elements) {
         if (element) collectBindingNames(element, names)
       }
-      if (binding.rest) collectBindingNames(binding.rest, names)
       return
-    case 'binding-object':
-      for (const prop of binding.properties) collectBindingNames(prop.value, names)
-      if (binding.rest) names.push(binding.rest.name)
+    case 'ObjectPattern':
+      for (const property of binding.properties) {
+        collectBindingNames(
+          property.type === 'RestElement' ? property.argument : property.value,
+          names,
+        )
+      }
       return
   }
 }
@@ -106,53 +103,54 @@ export function bindCompiledArrowParameters(
 }
 
 export function compileArrowBinding(
-  binding: JSBindingNode,
-  compileNode: (node: JSExprNode) => CompiledNodeEvaluator,
+  binding: BindingPattern,
+  compileNode: (node: ExpressionNode) => CompiledNodeEvaluator,
 ): CompiledArrowBinding {
   switch (binding.type) {
-    case 'binding-identifier':
+    case 'Identifier':
       return (value, state) => {
         ;(state.context as Record<string, unknown>)[binding.name] = value
       }
 
-    case 'binding-assignment': {
+    case 'AssignmentPattern': {
       const left = compileArrowBinding(binding.left, compileNode)
-      const defaultValue = compileNode(binding.defaultValue)
-      return (value, state) => {
-        left(value === undefined ? defaultValue(state) : value, state)
-      }
+      const right = compileNode(binding.right)
+      return (value, state) => left(value === undefined ? right(state) : value, state)
     }
 
-    case 'binding-array': {
+    case 'RestElement':
+      return compileArrowBinding(binding.argument, compileNode)
+
+    case 'ArrayPattern': {
       const elements = binding.elements.map((element) =>
         element === null ? null : compileArrowBinding(element, compileNode),
       )
-      const rest = binding.rest ? compileArrowBinding(binding.rest, compileNode) : null
       return (value, state) => {
-        if (
-          value == null ||
-          typeof (value as Record<PropertyKey, unknown>)[Symbol.iterator] !== 'function'
-        ) {
-          throw new JSEvalError('Array binding patterns require an iterable value')
-        }
-
-        const values = Array.from(value as Iterable<unknown>)
+        const values = iterableBindingValues(value)
         let index = 0
-        for (const element of elements) {
-          if (element) element(values[index], state)
+        for (let elementIndex = 0; elementIndex < binding.elements.length; elementIndex += 1) {
+          const bindingElement = binding.elements[elementIndex]
+          const bind = elements[elementIndex]
+          if (bindingElement?.type === 'RestElement') {
+            bind!(values.slice(index), state)
+            return
+          }
+          if (bind) bind(values[index], state)
           index += 1
         }
-        if (rest) rest(values.slice(index), state)
       }
     }
 
-    case 'binding-object': {
-      const properties = binding.properties.map((prop) => ({
-        key: compileKeyResolver(prop.key, prop.computed, compileNode),
-        bind: compileArrowBinding(prop.value, compileNode),
-      }))
-      const restName = binding.rest?.name
-      const restStepNode = binding.rest ? keyNodeForStepBudget(binding.rest) : undefined
+    case 'ObjectPattern': {
+      const properties = binding.properties
+        .filter((property) => property.type === 'Property')
+        .map((property) => ({
+          node: property,
+          key: compileKeyResolver(property.key, property.computed, compileNode),
+          bind: compileArrowBinding(property.value, compileNode),
+        }))
+      const rest = binding.properties.find((property) => property.type === 'RestElement')
+      const restName = rest ? getRestIdentifier(rest.argument).name : undefined
 
       return (value, state) => {
         if (value == null) {
@@ -162,16 +160,16 @@ export function compileArrowBinding(
         const source = Object(value) as Record<string, unknown>
         const excluded = restName ? new Set<string>() : undefined
 
-        for (const prop of properties) {
-          const key = prop.key(state)
+        for (const property of properties) {
+          const key = property.key(state)
           excluded?.add(key)
-          prop.bind(source[key], state)
+          property.bind(readProperty(source, key, property.node, state), state)
         }
 
         if (restName) {
           const restValue = createObjectLiteralResult(getObjectLiteralMode(state.opts))
           for (const key of Object.keys(source)) {
-            consumeStep(state, restStepNode!)
+            consumeStep(state, rest!.argument)
             if (excluded!.has(key) || BLOCKED_PROPS.has(key)) continue
             restValue[key] = source[key]
           }
@@ -183,15 +181,15 @@ export function compileArrowBinding(
 }
 
 function compileKeyResolver(
-  keyNode: JSExprNode,
+  keyNode: ExpressionNode,
   computed: boolean,
-  compileNode: (node: JSExprNode) => CompiledNodeEvaluator,
+  compileNode: (node: ExpressionNode) => CompiledNodeEvaluator,
 ): (state: EvalState) => string {
-  if (!computed && keyNode.type === 'identifier') {
+  if (!computed && keyNode.type === 'Identifier') {
     const key = keyNode.name
     return () => key
   }
-  if (!computed && keyNode.type === 'literal') {
+  if (!computed && keyNode.type === 'Literal') {
     const key = String(keyNode.value)
     return () => key
   }
@@ -201,105 +199,124 @@ function compileKeyResolver(
 }
 
 export function bindArrowParameters(
-  params: JSArrowParameterNode[],
+  params: BindingPattern[],
   args: unknown[],
   state: EvalState,
-  evalNode: (node: JSExprNode, state: EvalState) => unknown,
+  evalNode: (node: ExpressionNode, state: EvalState) => unknown,
 ): void {
   let argIndex = 0
 
   for (const param of params) {
-    const value = param.rest ? args.slice(argIndex) : args[argIndex]
-    if (!param.rest) argIndex += 1
+    const rest = param.type === 'RestElement'
+    const value = rest ? args.slice(argIndex) : args[argIndex]
+    if (!rest) argIndex += 1
     else argIndex = args.length
-    bindArrowBinding(param.binding, value, state, evalNode)
+    bindArrowBinding(param, value, state, evalNode)
   }
 }
 
 export function bindArrowBinding(
-  binding: JSBindingNode,
+  binding: BindingPattern,
   value: unknown,
   state: EvalState,
-  evalNode: (node: JSExprNode, state: EvalState) => unknown,
+  evalNode: (node: ExpressionNode, state: EvalState) => unknown,
 ): void {
   switch (binding.type) {
-    case 'binding-identifier':
+    case 'Identifier':
       ;(state.context as Record<string, unknown>)[binding.name] = value
       return
 
-    case 'binding-assignment':
+    case 'AssignmentPattern':
       bindArrowBinding(
         binding.left,
-        value === undefined ? evalNode(binding.defaultValue, state) : value,
+        value === undefined ? evalNode(binding.right, state) : value,
         state,
         evalNode,
       )
       return
 
-    case 'binding-array': {
-      if (
-        value == null ||
-        typeof (value as Record<PropertyKey, unknown>)[Symbol.iterator] !== 'function'
-      ) {
-        throw new JSEvalError('Array binding patterns require an iterable value')
-      }
+    case 'RestElement':
+      bindArrowBinding(binding.argument, value, state, evalNode)
+      return
 
-      const values = Array.from(value as Iterable<unknown>)
+    case 'ArrayPattern': {
+      const values = iterableBindingValues(value)
       let index = 0
       for (const element of binding.elements) {
+        if (element?.type === 'RestElement') {
+          bindArrowBinding(element.argument, values.slice(index), state, evalNode)
+          return
+        }
         if (element) bindArrowBinding(element, values[index], state, evalNode)
         index += 1
       }
-      if (binding.rest) bindArrowBinding(binding.rest, values.slice(index), state, evalNode)
       return
     }
 
-    case 'binding-object': {
+    case 'ObjectPattern': {
       if (value == null) {
         throw new JSEvalError('Object binding patterns cannot destructure null or undefined')
       }
 
       const source = Object(value) as Record<string, unknown>
-      const excluded = new Set<string>()
+      const rest = binding.properties.find((property) => property.type === 'RestElement')
+      const excluded = rest ? new Set<string>() : undefined
 
-      for (const prop of binding.properties) {
-        const key = getBindingPropertyKey(prop.key, prop.computed, state, evalNode)
-        excluded.add(key)
-        bindArrowBinding(prop.value, source[key], state, evalNode)
+      for (const property of binding.properties) {
+        if (property.type === 'RestElement') continue
+        const key = getBindingKey(property.key, property.computed, state, evalNode)
+        excluded?.add(key)
+        bindArrowBinding(
+          property.value,
+          readProperty(source, key, property, state),
+          state,
+          evalNode,
+        )
       }
 
-      if (binding.rest) {
+      if (rest) {
+        const restName = getRestIdentifier(rest.argument).name
         const restValue = createObjectLiteralResult(getObjectLiteralMode(state.opts))
         for (const key of Object.keys(source)) {
-          consumeStep(state, keyNodeForStepBudget(binding.rest))
-          if (excluded.has(key) || BLOCKED_PROPS.has(key)) continue
+          consumeStep(state, rest.argument)
+          if (excluded!.has(key) || BLOCKED_PROPS.has(key)) continue
           restValue[key] = source[key]
         }
-        ;(state.context as Record<string, unknown>)[binding.rest.name] = restValue
+        ;(state.context as Record<string, unknown>)[restName] = restValue
       }
       return
     }
   }
 }
 
-function getBindingPropertyKey(
-  keyNode: JSExprNode,
+function iterableBindingValues(value: unknown): unknown[] {
+  if (
+    value == null ||
+    typeof (value as Record<PropertyKey, unknown>)[Symbol.iterator] !== 'function'
+  ) {
+    throw new JSEvalError('Array binding patterns require an iterable value')
+  }
+  return Array.from(value as Iterable<unknown>)
+}
+
+function getBindingKey(
+  keyNode: ExpressionNode,
   computed: boolean,
   state: EvalState,
-  evalNode: (node: JSExprNode, state: EvalState) => unknown,
+  evalNode: (node: ExpressionNode, state: EvalState) => unknown,
 ): string {
-  if (computed) return String(evalNode(keyNode, state))
-  if (keyNode.type === 'identifier') return keyNode.name
-  if (keyNode.type === 'literal') return String(keyNode.value)
+  if (!computed && keyNode.type === 'Identifier') return keyNode.name
+  if (!computed && keyNode.type === 'Literal') return String(keyNode.value)
   return String(evalNode(keyNode, state))
 }
 
-function keyNodeForStepBudget(binding: JSBindingNode): JSExprNode {
-  return {
-    type: 'literal',
-    value: undefined,
-    raw: 'undefined',
-    start: binding.start,
-    end: binding.end,
+function getRestIdentifier(binding: BindingPattern): Identifier {
+  if (binding.type !== 'Identifier') {
+    throw new JSEvalError('Object rest bindings require an identifier')
   }
+  return binding
+}
+
+export function isArrowFunctionNode(node: ExpressionNode): node is ArrowFunctionExpression {
+  return node.type === 'ArrowFunctionExpression'
 }

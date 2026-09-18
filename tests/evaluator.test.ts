@@ -2,11 +2,12 @@ import { describe, expect, test } from 'vitest'
 import {
   allowAllCalls,
   compileExpression,
-  evaluate,
   type EvalOptions,
+  evaluate,
   type JSEvalError,
   JSLexError,
   JSParseError,
+  ownPropertyAccess,
   parseExpression,
 } from '../src/expr/index.js'
 
@@ -228,7 +229,51 @@ describe('evaluator', () => {
   test('optional chaining: computed', () =>
     expect(ev('obj?.[key]', { obj: null, key: 'x' })).toBe(undefined))
   test('optional chaining: call', () => expect(ev('fn?.()', { fn: null })).toBe(undefined))
+  test('optional chaining propagates through the complete chain', () => {
+    expect(ev('obj?.a.b()', { obj: null })).toBe(undefined)
+    expect(ev('obj?.a.b', { obj: { a: { b: 4 } } })).toBe(4)
+  })
+  test('parentheses terminate optional-chain propagation', () => {
+    expect(() => ev('(obj?.a).b', { obj: null })).toThrow('undefined')
+  })
+  test('optional chaining skips computed keys and arguments after short circuit', () => {
+    const seen: string[] = []
+    const mark = (value: string) => {
+      seen.push(value)
+      return value
+    }
+    expect(ev('obj?.[mark("key")].call(mark("arg"))', { obj: null, mark }, ALLOW_ALL_CALLS)).toBe(
+      undefined,
+    )
+    expect(seen).toEqual([])
+  })
   test('array index', () => expect(ev('arr[1]', { arr: [10, 20, 30] })).toBe(20))
+  test('own-property access policy rejects inherited properties and methods', () => {
+    const inherited = Object.create({ value: 3, getValue: () => 3 }) as Record<string, unknown>
+    expect(() =>
+      ev('obj.value', { obj: inherited }, { propertyAccess: ownPropertyAccess }),
+    ).toThrow('not an own property')
+    expect(() =>
+      ev('obj.getValue()', { obj: inherited }, { propertyAccess: ownPropertyAccess }),
+    ).toThrow('not an own property')
+  })
+  test('custom property access policy is used for member reads and methods', () => {
+    const reads: string[] = []
+    const propertyAccess: EvalOptions['propertyAccess'] = ({ target, key, kind }) => {
+      reads.push(`${kind}:${key}`)
+      return (target as Record<string, unknown>)[key]
+    }
+    expect(
+      ev(
+        'obj.value + obj.getValue()',
+        {
+          obj: { value: 2, getValue: () => 3 },
+        },
+        { propertyAccess, isCallableAllowed: allowAllCalls },
+      ),
+    ).toBe(5)
+    expect(reads).toEqual(['property:value', 'method:getValue'])
+  })
 
   // ── Function calls ────────────────────────────────────────────────
   test('simple call', () =>
@@ -371,6 +416,45 @@ describe('evaluator', () => {
       ),
     ).toBe(10)
   })
+  test.each([
+    'default',
+    'performance',
+  ] as const)('%s arrow backend shares the caller execution budget', (functionMode) => {
+    expect(() =>
+      ev(
+        'applyMany(x => x + 1)',
+        {
+          applyMany: (callback: (value: number) => number) => {
+            for (let index = 0; index < 20; index += 1) callback(index)
+          },
+        },
+        { ...ALLOW_ALL_CALLS, functionMode, maxSteps: 12 },
+      ),
+    ).toThrow('Maximum evaluation steps')
+  })
+  test.each([
+    'default',
+    'performance',
+  ] as const)('%s arrow backend shares the caller call-depth budget', (functionMode) => {
+    const call = (callback: () => unknown) => callback()
+    expect(() =>
+      ev(
+        'call(() => call(() => call(() => 1)))',
+        { call },
+        {
+          ...ALLOW_ALL_CALLS,
+          functionMode,
+          maxCallDepth: 2,
+        },
+      ),
+    ).toThrow('Maximum call depth')
+  })
+  test('own-property access policy applies to object destructuring', () => {
+    const inherited = Object.create({ value: 3 }) as Record<string, unknown>
+    expect(() =>
+      ev('(({ value }) => value)(obj)', { obj: inherited }, { propertyAccess: ownPropertyAccess }),
+    ).toThrow('not an own property')
+  })
 
   // ── in operator ───────────────────────────────────────────────────
   test('in operator', () =>
@@ -410,8 +494,8 @@ describe('evaluator', () => {
   test('parseExpression emits sequence nodes for comma expressions', () => {
     const parsed = parseExpression('1, 2, 3')
 
-    expect(parsed.type).toBe('sequence')
-    if (parsed.type !== 'sequence') throw new Error('Expected a sequence node')
+    expect(parsed.type).toBe('SequenceExpression')
+    if (parsed.type !== 'SequenceExpression') throw new Error('Expected a sequence node')
     expect(parsed.expressions).toHaveLength(3)
   })
 

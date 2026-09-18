@@ -22,8 +22,38 @@ describe('public API', () => {
 
   test('parseExpression exposes the expression AST', () => {
     expect(parseExpression('count + 1')).toMatchObject({
-      type: 'binary',
+      type: 'BinaryExpression',
       operator: '+',
+    })
+  })
+
+  test('parseExpression emits restricted ESTree shapes', () => {
+    expect(parseExpression('undefined')).toMatchObject({ type: 'Identifier', name: 'undefined' })
+    expect(parseExpression('obj?.a.b')).toMatchObject({
+      type: 'ChainExpression',
+      expression: {
+        type: 'MemberExpression',
+        object: {
+          type: 'MemberExpression',
+          optional: true,
+        },
+        optional: false,
+      },
+    })
+    expect(parseExpression('x => `v:${x}`')).toMatchObject({
+      type: 'ArrowFunctionExpression',
+      expression: true,
+      generator: false,
+      async: false,
+      params: [{ type: 'Identifier', name: 'x' }],
+      body: {
+        type: 'TemplateLiteral',
+        quasis: [{ type: 'TemplateElement' }, { type: 'TemplateElement', tail: true }],
+      },
+    })
+    expect(parseExpression('1 |> % + 1')).toMatchObject({
+      type: 'PipelineExpression',
+      right: { type: 'BinaryExpression' },
     })
   })
 

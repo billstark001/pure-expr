@@ -94,5 +94,8 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "dependencies": {
+    "@types/estree": "^1.0.9"
   }
 }

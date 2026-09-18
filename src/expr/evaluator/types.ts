@@ -1,10 +1,10 @@
-import type { JSArrowFunctionNode, JSExprNode } from '../node-types.js'
+import type { ArrowFunctionExpression, AstNode, ExpressionNode } from '../node-types.js'
 
 /** Error raised while evaluating an expression AST. */
 export class JSEvalError extends Error {
   constructor(
     message: string,
-    public readonly node?: JSExprNode,
+    public readonly node?: AstNode,
   ) {
     super(message)
     this.name = 'JSEvalError'
@@ -22,12 +22,22 @@ export type RootContextMode =
 export type ObjectLiteralMode = 'none' | 'filter-blocked' | 'plain-object-only' | 'safe'
 export type JSCallKind = 'call' | 'pipeline' | 'tagged-template'
 export type JSCallable = CallableFunction
+export type PropertyAccessKind = 'property' | 'method'
+
+export interface PropertyAccessContext {
+  target: unknown
+  key: string
+  kind: PropertyAccessKind
+  node: AstNode
+}
+
+export type PropertyAccessPolicy = (details: Readonly<PropertyAccessContext>) => unknown
 
 export interface JSCallPermissionContext {
   kind: JSCallKind
   fn: JSCallable
   thisValue: unknown
-  node: JSExprNode
+  node: ExpressionNode
 }
 
 export type JSCallPermissionPolicy = (details: Readonly<JSCallPermissionContext>) => boolean
@@ -46,6 +56,7 @@ export interface JSEvalOptions {
   rootContextMode?: RootContextMode
   objectLiteralMode?: ObjectLiteralMode
   isCallableAllowed?: JSCallPermissionPolicy
+  propertyAccess?: PropertyAccessPolicy
   taggedTemplateArrayMode?: TaggedTemplateArrayMode
 }
 
@@ -58,7 +69,7 @@ export type CompiledArrowBinding = (value: unknown, state: EvalState) => void
 export type CompiledKeyEvaluator = (state: EvalState) => string
 
 export interface CompiledArgumentEvaluator {
-  node: JSExprNode
+  node: ExpressionNode
   spread: boolean
   execute: CompiledNodeEvaluator
 }
@@ -81,12 +92,16 @@ export interface CompiledArrowRuntime {
   expectedArgumentCount: number
 }
 
-export interface EvalState {
+export interface EvalState extends ExecutionBudget {
   context: Readonly<Record<string, unknown>>
-  callDepth: number
-  steps: number
+  budget: ExecutionBudget
   topics: unknown[]
   opts: Readonly<JSEvalOptions>
+}
+
+export interface ExecutionBudget {
+  callDepth: number
+  steps: number
 }
 
 export const EMPTY_CONTEXT: Readonly<Record<string, unknown>> = Object.freeze({})
@@ -94,7 +109,7 @@ export const EMPTY_OPTS: Readonly<JSEvalOptions> = Object.freeze({})
 export const UNINITIALIZED_ARROW_PARAM = Symbol('pure-expr.uninitialized-arrow-param')
 export const PURE_EXPR_ARROW_BRAND = Symbol('pure-expr.arrow-function')
 export const PERFORMANCE_ARROW_RUNTIME_CACHE = new WeakMap<
-  JSArrowFunctionNode,
+  ArrowFunctionExpression,
   CompiledArrowRuntime
 >()
 

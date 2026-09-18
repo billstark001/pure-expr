@@ -101,7 +101,7 @@ function consumeLineContinuation(raw: string, index: number): number | null {
 export class JSLexer {
   private pos = 0
 
-  constructor(private readonly src: string) { }
+  constructor(private readonly src: string) {}
 
   tokenize(): JSToken[] {
     const tokens: JSToken[] = []

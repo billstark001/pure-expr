@@ -1,6 +1,6 @@
 import {
-  compileExpression,
   type CompiledExpression,
+  compileExpression,
   type EvalOptions,
   JSEvalError,
   JSLexError,

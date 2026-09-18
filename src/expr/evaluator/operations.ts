@@ -1,14 +1,20 @@
 import type {
-  JSBinaryNode,
-  JSExprNode,
-  JSIdentifierNode,
-  JSLogicalNode,
-  JSUnaryNode,
+  AstNode,
+  BinaryExpression,
+  Identifier,
+  LogicalExpression,
+  UnaryExpression,
 } from '../node-types.js'
 import { BLOCKED_GLOBALS, BLOCKED_PROPS } from './security.js'
-import { JSEvalError, UNINITIALIZED_ARROW_PARAM, type EvalState } from './types.js'
+import {
+  type EvalState,
+  JSEvalError,
+  type PropertyAccessPolicy,
+  UNINITIALIZED_ARROW_PARAM,
+} from './types.js'
 
-export function resolveIdentifier(node: JSIdentifierNode, state: EvalState): unknown {
+export function resolveIdentifier(node: Identifier, state: EvalState): unknown {
+  if (node.name === 'undefined') return undefined
   if (BLOCKED_GLOBALS.has(node.name)) {
     throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
   }
@@ -24,7 +30,7 @@ export function resolveIdentifier(node: JSIdentifierNode, state: EvalState): unk
 
 export function assertPropertyAllowed(
   key: string,
-  node: JSExprNode,
+  node: AstNode,
   kind: 'property' | 'method' = 'property',
 ): void {
   if (BLOCKED_PROPS.has(key)) {
@@ -32,7 +38,37 @@ export function assertPropertyAllowed(
   }
 }
 
-export function applyUnaryOperator(node: JSUnaryNode, value: unknown): unknown {
+/** JavaScript-compatible property access, including inherited properties. */
+export const inheritedPropertyAccess: PropertyAccessPolicy = ({ target, key }) =>
+  (Object(target) as Record<string, unknown>)[key]
+
+/** Property access policy that rejects inherited properties. */
+export const ownPropertyAccess: PropertyAccessPolicy = ({ target, key, kind, node }) => {
+  const boxed = Object(target)
+  if (!Object.prototype.hasOwnProperty.call(boxed, key)) {
+    throw new JSEvalError(
+      `${kind === 'method' ? 'Method' : 'Property'} '${key}' is not an own property`,
+      node,
+    )
+  }
+  return (boxed as Record<string, unknown>)[key]
+}
+
+export function readProperty(
+  target: unknown,
+  key: string,
+  node: AstNode,
+  state: EvalState,
+  kind: 'property' | 'method' = 'property',
+): unknown {
+  assertPropertyAllowed(key, node, kind)
+  const policy = state.opts.propertyAccess
+  return policy
+    ? policy({ target, key, kind, node })
+    : (Object(target) as Record<string, unknown>)[key]
+}
+
+export function applyUnaryOperator(node: UnaryExpression, value: unknown): unknown {
   switch (node.operator) {
     case '!':
       return !value
@@ -44,14 +80,16 @@ export function applyUnaryOperator(node: JSUnaryNode, value: unknown): unknown {
       return -(value as any)
     case 'void':
       return undefined
-    case 'await':
-      return value
     default:
       throw new JSEvalError(`Unknown unary operator '${node.operator}'`, node)
   }
 }
 
-export function applyBinaryOperator(node: JSBinaryNode, left: unknown, right: unknown): unknown {
+export function applyBinaryOperator(
+  node: BinaryExpression,
+  left: unknown,
+  right: unknown,
+): unknown {
   switch (node.operator) {
     case '+':
       return (left as any) + (right as any)
@@ -105,7 +143,7 @@ export function applyBinaryOperator(node: JSBinaryNode, left: unknown, right: un
 }
 
 export function evaluateLogicalOperator(
-  node: JSLogicalNode,
+  node: LogicalExpression,
   left: unknown,
   evaluateRight: () => unknown,
 ): unknown {

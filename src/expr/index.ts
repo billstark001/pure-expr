@@ -1,82 +1,77 @@
 import { type JSEvalOptions, JSEvaluator } from './evaluator.js'
 import { JSLexer, type JSToken } from './lexer.js'
-import type { JSBindingNode, JSExprNode } from './node-types.js'
-import { type JSParserOptions, JSExpressionParser, JSParseError } from './parser.js'
+import type { BindingPattern, ExpressionNode } from './node-types.js'
+import { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
 
-// #region Shared public types
-
-/** Options shared by parsing and evaluation helpers. */
 export interface EvalOptions extends JSParserOptions, JSEvalOptions {}
 
-// #endregion
-
-// #region Re-exports
-
 export { defaultCallPermissionPolicy } from './call-permission.js'
-export { JSExpressionParser, type JSParserOptions, JSParseError } from './parser.js'
 export {
   allowAllCalls,
   type FunctionMode,
-  JSEvaluator,
+  inheritedPropertyAccess,
   type JSCallKind,
   type JSCallPermissionContext,
   type JSCallPermissionPolicy,
+  JSEvalError,
   type JSEvalOptions,
+  JSEvaluator,
   type ObjectLiteralMode,
+  ownPropertyAccess,
+  type PropertyAccessContext,
+  type PropertyAccessKind,
+  type PropertyAccessPolicy,
   type RootContextMode,
   type TaggedTemplateArrayMode,
-  JSEvalError,
 } from './evaluator.js'
 export {
+  cookTemplate,
+  JSLexError,
   JSLexer,
   type JSToken,
   type JSTokenKind,
   type TemplateQuasi,
-  JSLexError,
-  cookTemplate,
 } from './lexer.js'
-
 export type {
-  JSExprNode,
-  JSLiteralNode,
-  JSRegexNode,
-  JSIdentifierNode,
-  JSTopicReferenceNode,
-  JSBindingNode,
-  JSBindingIdentifierNode,
-  JSBindingAssignmentNode,
-  JSBindingArrayNode,
-  JSBindingPropertyNode,
-  JSBindingObjectNode,
-  JSArrowParameterNode,
-  JSArrowFunctionNode,
-  JSUnaryNode,
-  JSMemberNode,
-  JSCallNode,
-  JSConditionalNode,
-  JSBinaryNode,
-  JSLogicalNode,
-  JSArrayNode,
-  JSObjectNode,
-  JSPipelineNode,
-  JSSpreadNode,
-  JSObjectPropNode,
-  JSTemplateNode,
-  JSSequenceNode,
+  ArrayExpression,
+  ArrayPattern,
+  ArrowFunctionExpression,
+  AssignmentPattern,
+  AssignmentProperty,
+  AstNode,
+  AwaitExpression,
+  BinaryExpression,
+  BindingPattern,
+  CallExpression,
+  ChainExpression,
+  ConditionalExpression,
+  ExpressionNode,
+  Identifier,
+  Literal,
+  LogicalExpression,
+  MemberExpression,
+  ObjectExpression,
+  ObjectPattern,
+  PipelineExpression,
+  Property,
+  RestElement,
+  SequenceExpression,
+  SourceOffsets,
+  SpreadElement,
+  TaggedTemplateExpression,
+  TemplateElement,
+  TemplateLiteral,
+  TopicReference,
+  UnaryExpression,
 } from './node-types.js'
+export { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
 
-// #endregion
-
-// #region Validation helpers
-
-/** Parsed expression that can be evaluated repeatedly with different scopes. */
 export interface CompiledExpression {
   readonly source: string
-  readonly ast: JSExprNode
+  readonly ast: ExpressionNode
   evaluate(context?: Record<string, unknown>): unknown
 }
 
-/** Tokenize an expression source string. */
 export function tokenizeExpression(
   expression: string,
   options: Pick<JSParserOptions, 'maxSourceLength'> = {},
@@ -95,12 +90,11 @@ function validateSourceLength(
   }
 }
 
-function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
+function validateAstBudget(ast: ExpressionNode, options: JSParserOptions): void {
   let nodeCount = 0
 
   const bumpBudget = (depth: number): void => {
     nodeCount += 1
-
     if (options.maxAstNodes !== undefined && nodeCount > options.maxAstNodes) {
       throw new JSParseError(`Expression exceeds maximum AST node count (${options.maxAstNodes})`)
     }
@@ -109,87 +103,82 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
     }
   }
 
-  const visitBinding = (binding: JSBindingNode, depth: number): void => {
+  const visitBinding = (binding: BindingPattern, depth: number): void => {
     bumpBudget(depth)
-
     switch (binding.type) {
-      case 'binding-identifier':
+      case 'Identifier':
         return
-
-      case 'binding-assignment':
+      case 'AssignmentPattern':
         visitBinding(binding.left, depth + 1)
-        visit(binding.defaultValue, depth + 1)
+        visit(binding.right, depth + 1)
         return
-
-      case 'binding-array':
+      case 'RestElement':
+        visitBinding(binding.argument, depth + 1)
+        return
+      case 'ArrayPattern':
         for (const element of binding.elements) {
-          if (element !== null) visitBinding(element, depth + 1)
+          if (element) visitBinding(element, depth + 1)
         }
-        if (binding.rest) visitBinding(binding.rest, depth + 1)
         return
-
-      case 'binding-object':
-        for (const prop of binding.properties) {
+      case 'ObjectPattern':
+        for (const property of binding.properties) {
           bumpBudget(depth + 1)
-          if (prop.computed) visit(prop.key, depth + 2)
-          visitBinding(prop.value, depth + 2)
+          if (property.type === 'RestElement') visitBinding(property.argument, depth + 2)
+          else {
+            if (property.computed) visit(property.key, depth + 2)
+            visitBinding(property.value, depth + 2)
+          }
         }
-        if (binding.rest) visitBinding(binding.rest, depth + 1)
         return
     }
   }
 
-  const visit = (node: JSExprNode, depth: number): void => {
+  const visit = (node: ExpressionNode, depth: number): void => {
     bumpBudget(depth)
-
     switch (node.type) {
-      case 'literal':
-      case 'regex':
-      case 'identifier':
-      case 'topic':
+      case 'Literal':
+      case 'Identifier':
+      case 'TopicReference':
         return
-
-      case 'arrow-function':
-        for (const param of node.params) {
-          bumpBudget(depth + 1)
-          visitBinding(param.binding, depth + 2)
-        }
+      case 'ArrowFunctionExpression':
+        for (const param of node.params) visitBinding(param, depth + 1)
         visit(node.body, depth + 1)
         return
-
-      case 'unary':
-        visit(node.operand, depth + 1)
+      case 'UnaryExpression':
+      case 'AwaitExpression':
+        visit(node.argument, depth + 1)
         return
-
-      case 'binary':
-      case 'logical':
-      case 'pipeline':
+      case 'BinaryExpression':
+      case 'LogicalExpression':
+      case 'PipelineExpression':
         visit(node.left, depth + 1)
         visit(node.right, depth + 1)
         return
-
-      case 'conditional':
+      case 'ConditionalExpression':
         visit(node.test, depth + 1)
         visit(node.consequent, depth + 1)
         visit(node.alternate, depth + 1)
         return
-
-      case 'member':
+      case 'MemberExpression':
         visit(node.object, depth + 1)
         visit(node.property, depth + 1)
         return
-
-      case 'call':
-        if (options.maxCallArguments !== undefined && node.args.length > options.maxCallArguments) {
+      case 'CallExpression':
+        if (
+          options.maxCallArguments !== undefined &&
+          node.arguments.length > options.maxCallArguments
+        ) {
           throw new JSParseError(
             `Expression exceeds maximum call argument count (${options.maxCallArguments})`,
           )
         }
         visit(node.callee, depth + 1)
-        for (const arg of node.args) visit(arg, depth + 1)
+        for (const argument of node.arguments) visit(argument, depth + 1)
         return
-
-      case 'array':
+      case 'ChainExpression':
+        visit(node.expression, depth + 1)
+        return
+      case 'ArrayExpression':
         if (
           options.maxArrayElements !== undefined &&
           node.elements.length > options.maxArrayElements
@@ -199,34 +188,30 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
           )
         }
         for (const element of node.elements) {
-          if (element !== null) visit(element, depth + 1)
+          if (element) visit(element, depth + 1)
         }
         return
-
-      case 'object':
+      case 'ObjectExpression':
         if (
           options.maxObjectProperties !== undefined &&
-          node.props.length > options.maxObjectProperties
+          node.properties.length > options.maxObjectProperties
         ) {
           throw new JSParseError(
             `Expression exceeds maximum object property count (${options.maxObjectProperties})`,
           )
         }
-        for (const prop of node.props) {
-          if (prop.type === 'spread') {
-            visit(prop.argument, depth + 1)
-          } else {
-            visit(prop.key, depth + 1)
-            visit(prop.value, depth + 1)
+        for (const property of node.properties) {
+          if (property.type === 'SpreadElement') visit(property.argument, depth + 1)
+          else {
+            visit(property.key, depth + 1)
+            visit(property.value, depth + 1)
           }
         }
         return
-
-      case 'spread':
+      case 'SpreadElement':
         visit(node.argument, depth + 1)
         return
-
-      case 'template':
+      case 'TemplateLiteral':
         if (
           options.maxTemplateExpressions !== undefined &&
           node.expressions.length > options.maxTemplateExpressions
@@ -235,30 +220,22 @@ function validateAstBudget(ast: JSExprNode, options: JSParserOptions): void {
             `Expression exceeds maximum template expression count (${options.maxTemplateExpressions})`,
           )
         }
-        if (node.tag) visit(node.tag, depth + 1)
         for (const expression of node.expressions) visit(expression, depth + 1)
         return
-
-      case 'sequence':
+      case 'TaggedTemplateExpression':
+        visit(node.tag, depth + 1)
+        visit(node.quasi, depth + 1)
+        return
+      case 'SequenceExpression':
         for (const expression of node.expressions) visit(expression, depth + 1)
         return
-
-      default: {
-        const exhaustive: never = node
-        throw new JSParseError(`Unknown AST node type: ${(exhaustive as any).type}`)
-      }
     }
   }
 
   visit(ast, 1)
 }
 
-// #endregion
-
-// #region Public expression helpers
-
-/** Parse an expression source string into an AST. */
-export function parseExpression(expression: string, options: JSParserOptions = {}): JSExprNode {
+export function parseExpression(expression: string, options: JSParserOptions = {}): ExpressionNode {
   validateSourceLength(expression, options)
   const tokens = tokenizeExpression(expression, options)
   const parser = new JSExpressionParser(tokens, options, expression)
@@ -267,14 +244,12 @@ export function parseExpression(expression: string, options: JSParserOptions = {
   return ast
 }
 
-/** Compile an expression once and evaluate it repeatedly with different scopes. */
 export function compileExpression(
   expression: string,
   options: EvalOptions = {},
 ): CompiledExpression {
   const ast = parseExpression(expression, options)
   const evaluator = new JSEvaluator({}, options)
-
   return {
     source: expression,
     ast,
@@ -284,42 +259,19 @@ export function compileExpression(
   }
 }
 
-/** Alias for compileExpression(...) with a shorter name. */
 export const compile = compileExpression
 
-/**
- * Parse and evaluate a JS expression string in a readonly context.
- *
- * @param expression The JS expression source string.
- * @param context A plain object of variables available to the expression.
- * @param options Parser/evaluator options.
- * @returns The result of the expression.
- *
- * @throws {JSLexError} On tokenization errors.
- * @throws {JSParseError} On syntax errors.
- * @throws {JSEvalError} On runtime errors.
- */
 export function evaluate(
   expression: string,
   context: Record<string, unknown> = {},
   options: EvalOptions = {},
 ): unknown {
   const ast = parseExpression(expression, options)
-  const evaluator = new JSEvaluator(context, options)
-  return evaluator.evaluate(ast)
+  return new JSEvaluator(context, options).evaluate(ast)
 }
 
-/**
- * Create a reusable evaluator bound to fixed options.
- * Useful when the same options are used across many evaluations.
- */
 export function createEvaluator(options: EvalOptions = {}) {
   const evaluator = new JSEvaluator({}, options)
-
-  return (expression: string, context: Record<string, unknown> = {}) => {
-    const ast = parseExpression(expression, options)
-    return evaluator.evaluate(ast, context)
-  }
+  return (expression: string, context: Record<string, unknown> = {}) =>
+    evaluator.evaluate(parseExpression(expression, options), context)
 }
-
-// #endregion
