@@ -449,6 +449,20 @@ describe('evaluator', () => {
       ),
     ).toThrow('Maximum call depth')
   })
+  test('performance arrows preserve optional-chain propagation and property policies', () => {
+    const inherited = Object.create({ value: 1 }) as Record<string, unknown>
+
+    expect(
+      ev('((obj) => obj?.missing.value)(obj)', { obj: null }, { functionMode: 'performance' }),
+    ).toBe(undefined)
+    expect(() =>
+      ev(
+        '((obj) => obj.value)(obj)',
+        { obj: inherited },
+        { functionMode: 'performance', propertyAccess: ownPropertyAccess },
+      ),
+    ).toThrow("Property 'value' is not an own property")
+  })
   test('own-property access policy applies to object destructuring', () => {
     const inherited = Object.create({ value: 3 }) as Record<string, unknown>
     expect(() =>

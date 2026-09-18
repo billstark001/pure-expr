@@ -233,7 +233,7 @@ function evalArrowFunctionPerformance(node: ArrowFunctionExpression, state: Eval
   }, runtime.expectedArgumentCount)
 }
 
-const { getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction, evalNode })
+const { getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
 
 function evalUnary(node: UnaryExpression, state: EvalState): unknown {
   if (node.operator === 'typeof') {
