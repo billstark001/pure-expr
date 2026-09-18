@@ -78,8 +78,10 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "coverage": "vitest run --config vitest.config.ts --coverage",
+    "conformance:generate": "node ./scripts/generate-conformance.mjs",
+    "conformance:check": "node ./scripts/generate-conformance.mjs --check",
     "pack:check": "pnpm pack --dry-run",
-    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run pack:check",
+    "ci": "pnpm run lint && pnpm run typecheck && pnpm run conformance:check && pnpm run test && pnpm run build && pnpm run pack:check",
     "prepublishOnly": "pnpm run ci"
   },
   "devDependencies": {

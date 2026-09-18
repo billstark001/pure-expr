@@ -201,8 +201,14 @@ pnpm run format
 pnpm run lint
 pnpm run bench:expr
 pnpm run bench:template
+pnpm run conformance:check
 pnpm run ci
 ```
+
+The versioned, language-neutral compatibility suite lives in `conformance/v1/corpus.json`. It
+contains one case for each of the 182 legacy TypeScript tests and is replayed against the current
+implementation during the test suite. See `conformance/v1/README.md` for the schema, tagged values,
+fixture vocabulary, and porting instructions.
 
 The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, short repeated, and Hack-pipe-heavy expressions. It also reports arrow-function creation and invocation throughput for both the `default` and `performance` function backends.
 

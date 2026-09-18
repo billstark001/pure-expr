@@ -1,0 +1,4861 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "1.0.0",
+  "semanticProfile": "legacy-js-v1",
+  "description": "Language-neutral behavioral corpus frozen from the pure-expr TypeScript tests.",
+  "legacyTestCount": 182,
+  "caseCount": 182,
+  "cases": [
+    {
+      "id": "evaluator.integer-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "integer literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "42",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 42
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.float-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "float literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "3.14",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3.14
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.hex-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "hex literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "0xFF",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 255
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.octal-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "octal literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "0o17",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.binary-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "binary literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "0b1010",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.bigint-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "bigint literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "9007199254740993n",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "bigint",
+              "value": "9007199254740993"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.string-double-quotes",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "string double quotes",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"hello\"",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "hello"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.string-single-quotes",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "string single quotes",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "'world'",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "world"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.string-escape-sequences",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "string escape sequences",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"a\\nb\"",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "a\nb"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.boolean-true",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "boolean true",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "true",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.boolean-false",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "boolean false",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "false",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.null-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "null literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "null",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.undefined-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "undefined literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "undefined",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "undefined"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.regex-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "regex literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "/abc/gi",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "regex",
+              "source": "abc",
+              "flags": "gi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.precedence-over",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "precedence: * over +",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "2 + 3 * 4",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.precedence-grouping-overrides",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "precedence: grouping overrides",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(2 + 3) * 4",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.precedence-right-assoc",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "precedence: ** right-assoc",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "2 ** 3 ** 2",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 512
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.precedence-unary-before",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "precedence: unary before **",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "-2 ** 2",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": -4
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.precedence-bitwise-arithmetic",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "precedence: bitwise < arithmetic",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 + 2 | 4",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.left-assoc-subtraction",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "left-assoc subtraction",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "10 - 3 - 2",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.comparison-chains",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "comparison chains",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 < 2 === true",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.logical-and-short-circuit",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "logical AND short-circuit",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "false && fn()",
+          "context": {
+            "fn": {
+              "$conformance": "callable",
+              "name": "fail-if-called"
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.logical-or-short-circuit",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "logical OR short-circuit",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "true || fn()",
+          "context": {
+            "fn": {
+              "$conformance": "callable",
+              "name": "fail-if-called"
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.nullish-coalescing",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "nullish coalescing",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "null ?? \"default\"",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "default"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.nullish-coalescing-skips-0-and-false",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "nullish coalescing skips 0 and false",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "0 ?? 42",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 0
+          }
+        },
+        {
+          "op": "evaluate",
+          "source": "false ?? 42",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.nullish-coalescing-rejects-mixing-with-or-without-parentheses",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "nullish coalescing rejects mixing with && or || without parentheses",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "1 ?? 2 || 3",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "without parentheses"
+              ]
+            }
+          }
+        },
+        {
+          "op": "parse-expression",
+          "source": "1 && 2 ?? 3",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "without parentheses"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.nullish-coalescing-allows-grouped-mixes-with-or",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "nullish coalescing allows grouped mixes with && or ||",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(1 ?? 2) || 3",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 1
+          }
+        },
+        {
+          "op": "evaluate",
+          "source": "1 ?? (2 || 3)",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.ternary-basic",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "ternary basic",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 > 0 ? \"yes\" : \"no\"",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "yes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.ternary-right-assoc",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "ternary right-assoc",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "false ? 1 : true ? 2 : 3",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.ternary-with-complex-expressions",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "ternary with complex expressions",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "x > 10 ? x * 2 : x + 1",
+          "context": {
+            "x": 5
+          },
+          "options": {},
+          "expect": {
+            "value": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.modulo",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "modulo",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "17 % 5",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.division",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "division",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "7 / 2",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.bitwise-not",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "bitwise NOT",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "~5",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": -6
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.left-shift",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "left shift",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 << 8",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 256
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.unsigned-right-shift",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "unsigned right shift",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "-1 >>> 0",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 4294967295
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.string-concatenation",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "string concatenation",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"foo\" + \"bar\"",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "foobar"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.template-literal-basic",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "template literal basic",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`hello world`",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "hello world"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.template-literal-with-expression",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "template literal with expression",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`${x} + ${y} = ${x + y}`",
+          "context": {
+            "x": 3,
+            "y": 4
+          },
+          "options": {},
+          "expect": {
+            "value": "3 + 4 = 7"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.template-literal-nested",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "template literal nested",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`${ `inner ${n}` }`",
+          "context": {
+            "n": 7
+          },
+          "options": {},
+          "expect": {
+            "value": "inner 7"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.tagged-template-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "tagged template literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "tag`a${1}b${2}c`",
+          "context": {
+            "tag": {
+              "$conformance": "callable",
+              "name": "tag-concat"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": "abc|1,2"
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.tagged-template-literal-preserves-method-receivers",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "tagged template literal preserves method receivers",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj.tag`x`",
+          "context": {
+            "obj": {
+              "value": 42,
+              "tag": {
+                "$conformance": "callable",
+                "name": "receiver-tag"
+              }
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 42
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.template-literal-can-be-disabled",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "template literal can be disabled",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`hello`",
+          "context": {},
+          "options": {
+            "allowTemplateLiterals": false
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.tagged-template-literal-can-be-disabled-independently",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "tagged template literal can be disabled independently",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "tag`hello`",
+          "context": {
+            "tag": {
+              "$conformance": "callable",
+              "name": "first-argument"
+            }
+          },
+          "options": {
+            "allowTaggedTemplates": false
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.tagged-template-literal-passes-a-cached-spec-like-template-object-by-default",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "tagged template literal passes a cached spec-like template object by default",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-evaluate",
+          "source": "tag`a\\nb${value}c`",
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "contexts": [
+            {
+              "tag": {
+                "$conformance": "callable",
+                "name": "inspect-template"
+              },
+              "value": 1
+            },
+            {
+              "tag": {
+                "$conformance": "callable",
+                "name": "inspect-template"
+              },
+              "value": 2
+            }
+          ],
+          "observeTrace": true,
+          "expect": {
+            "value": {
+              "values": [
+                {
+                  "cooked": "a\nb",
+                  "raw": "a\\nb",
+                  "frozen": true,
+                  "rawFrozen": true,
+                  "rawEnumerable": false
+                },
+                {
+                  "cooked": "a\nb",
+                  "raw": "a\\nb",
+                  "frozen": true,
+                  "rawFrozen": true,
+                  "rawEnumerable": false
+                }
+              ],
+              "trace": [
+                {
+                  "event": "template-object",
+                  "sameAsFirst": null
+                },
+                {
+                  "event": "template-object",
+                  "sameAsFirst": true
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "portability": "js-template-object"
+    },
+    {
+      "id": "evaluator.compiled-expressions-do-not-leak-nested-evaluation-context",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "compiled expressions do not leak nested evaluation context",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compiled-nested-evaluate",
+          "source": "fn(value) + value",
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 7
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.tagged-template-literal-supports-loose-array-emulation-mode",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "tagged template literal supports loose array emulation mode",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "tag`x`",
+          "context": {
+            "tag": {
+              "$conformance": "callable",
+              "name": "inspect-template-flags"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all",
+            "taggedTemplateArrayMode": "loose"
+          },
+          "expect": {
+            "value": {
+              "frozen": false,
+              "rawFrozen": false,
+              "rawEnumerable": true
+            }
+          }
+        }
+      ],
+      "portability": "js-template-object"
+    },
+    {
+      "id": "evaluator.untagged-template-literal-rejects-invalid-escapes",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "untagged template literal rejects invalid escapes",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`bad \\u{110000}`",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "Invalid escape sequence"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.tagged-template-literal-preserves-raw-text-and-undefined-cooked-values-for-invalid-escapes",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "tagged template literal preserves raw text and undefined cooked values for invalid escapes",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "tag`bad \\u{110000}`",
+          "context": {
+            "tag": {
+              "$conformance": "callable",
+              "name": "template-first-and-raw"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": [
+              {
+                "$conformance": "undefined"
+              },
+              "bad \\u{110000}"
+            ]
+          }
+        }
+      ],
+      "portability": "js-template-object"
+    },
+    {
+      "id": "evaluator.template-placeholder-expressions-handle-regex-literals-comments-and-nested-braces",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "template placeholder expressions handle regex literals, comments, and nested braces",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`${ /* keep */ /a{2}/.test(text) ? `{${value}}` : \"no\" }`",
+          "context": {
+            "text": "aa",
+            "value": "x"
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": "{x}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.dot-member-access",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "dot member access",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj.name",
+          "context": {
+            "obj": {
+              "name": "Alice"
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": "Alice"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.computed-member-access",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "computed member access",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj[\"key\"]",
+          "context": {
+            "obj": {
+              "key": 42
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": 42
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.chained-member-access",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "chained member access",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "a.b.c",
+          "context": {
+            "a": {
+              "b": {
+                "c": 99
+              }
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": 99
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.optional-chaining-null-base",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "optional chaining: null base",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj?.name",
+          "context": {
+            "obj": null
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "undefined"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.optional-chaining-defined-base",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "optional chaining: defined base",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj?.name",
+          "context": {
+            "obj": {
+              "name": "Bob"
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": "Bob"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.optional-chaining-computed",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "optional chaining: computed",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj?.[key]",
+          "context": {
+            "obj": null,
+            "key": "x"
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "undefined"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.optional-chaining-call",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "optional chaining: call",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "fn?.()",
+          "context": {
+            "fn": null
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "undefined"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.array-index",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "array index",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "arr[1]",
+          "context": {
+            "arr": [
+              10,
+              20,
+              30
+            ]
+          },
+          "options": {},
+          "expect": {
+            "value": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.simple-call",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "simple call",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "double(5)",
+          "context": {
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 10
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.method-call",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "method call",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj.greet(\"world\")",
+          "context": {
+            "obj": {
+              "greet": {
+                "$conformance": "callable",
+                "name": "greet"
+              }
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": "Hello, world!"
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.spread-in-call-args",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "spread in call args",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "Math.max(...nums)",
+          "context": {
+            "Math": {
+              "$conformance": "builtin",
+              "name": "Math"
+            },
+            "nums": [
+              1,
+              5,
+              3,
+              7,
+              2
+            ]
+          },
+          "options": {},
+          "expect": {
+            "value": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.chained-calls",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "chained calls",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"  hello  \".trim().toUpperCase()",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "HELLO"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.default-call-policy-allows-newer-safe-string-methods",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "default call policy allows newer safe string methods",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"Å\".normalize(\"NFC\")",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "Å"
+          }
+        },
+        {
+          "op": "evaluate",
+          "source": "\"😊\".codePointAt(0)",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 128522
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.default-call-policy-allows-newer-safe-array-methods",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "default call policy allows newer safe array methods",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "[1, [2, [3]]].flat(2)",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.array-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "array literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "[1, 2, 3]",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.array-spread",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "array spread",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "[...a, 4]",
+          "context": {
+            "a": [
+              1,
+              2,
+              3
+            ]
+          },
+          "options": {},
+          "expect": {
+            "value": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.object-literal",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object literal",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ a: 1, b: 2 })",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": {
+              "a": 1,
+              "b": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.object-shorthand",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object shorthand",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ x, y })",
+          "context": {
+            "x": 10,
+            "y": 20
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "x": 10,
+              "y": 20
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.object-computed-key",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object computed key",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ [key]: 99 })",
+          "context": {
+            "key": "dynamic"
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "dynamic": 99
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.object-spread",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object spread",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ ...base, c: 3 })",
+          "context": {
+            "base": {
+              "a": 1,
+              "b": 2
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "a": 1,
+              "b": 2,
+              "c": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.typeof-number",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "typeof number",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "typeof 42",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "number"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.typeof-string",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "typeof string",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "typeof \"hi\"",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "string"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.typeof-undefined-identifier",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "typeof undefined identifier",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "typeof nope",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "undefined"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.void-0",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "void 0",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "void 0",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": {
+              "$conformance": "undefined"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-basic",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline basic",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "5 |> double(%)",
+          "context": {
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-chained",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline chained",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "5 |> double(%) |> double(%)",
+          "context": {
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-topic-can-appear-in-arbitrary-expression-positions",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline topic can appear in arbitrary expression positions",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "5 |> [%, % + 1, double(%)]",
+          "context": {
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": [
+              5,
+              6,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-creates-nested-topic-scopes",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline creates nested topic scopes",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "2 |> (% + 1 |> double(%)) + %",
+          "context": {
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.topic-reference-is-rejected-outside-a-pipeline-body",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "topic reference is rejected outside a pipeline body",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "% + 1",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "only allowed inside a pipeline body"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-body-must-reference-the-topic",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline body must reference the topic",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "5 |> double",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "must reference '%' at least once"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.conditional-branches-can-contain-hack-pipes-with-assignment-level-precedence",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "conditional branches can contain hack pipes with assignment-level precedence",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "flag ? 1 : 2 |> double(%)",
+          "context": {
+            "flag": false,
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-body-rejects-unparenthesized-conditional-expressions",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline body rejects unparenthesized conditional expressions",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "5 |> flag ? % : 0",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "Hack pipe body cannot be an unparenthesized conditional expression"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.modulo-operator-remains-available-outside-topic-position",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "modulo operator remains available outside topic position",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "20 % 6",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.simple-concise-arrow-can-be-created-and-called",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "simple concise arrow can be created and called",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(x => x + 1)(2)",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.empty-parameter-arrow-works",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "empty-parameter arrow works",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(() => 1)()",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-default-parameters-evaluate-left-to-right",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow default parameters evaluate left to right",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "((x, y = x + 1) => y)(2)",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-default-parameters-preserve-tdz-like-self-references",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow default parameters preserve TDZ-like self references",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "((x = x) => x)()",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "before initialization"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-rest-parameters-collect-trailing-arguments",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow rest parameters collect trailing arguments",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "((head, ...rest) => rest[1])(1, 2, 3, 4)",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-array-destructuring-works",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow array destructuring works",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(([first, ...rest]) => rest[0])([1, 2, 3])",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-object-destructuring-with-defaults-and-rest-works",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow object destructuring with defaults and rest works",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(({ name, count = 1, ...rest }) => `${name}:${count}:${rest.extra}`)({ name: 'Ada', extra: 4 })",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": "Ada:1:4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-closures-capture-outer-scope",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow closures capture outer scope",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "((x) => (() => x + bonus))(2)()",
+          "context": {
+            "bonus": 3
+          },
+          "options": {},
+          "expect": {
+            "value": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-closures-capture-outer-pipe-topics",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow closures capture outer pipe topics",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "2 |> (() => % + 1)()",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.allowcalls-false-blocks-arrow-invocation",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "allowCalls=false blocks arrow invocation",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "(x => x)(1)",
+          "context": {},
+          "options": {
+            "allowCalls": false
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-functions-can-be-disabled-explicitly",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow functions can be disabled explicitly",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "x => x",
+          "options": {
+            "allowArrowFunctions": false
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "Arrow functions are not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-functions-reject-lexical-this-like-references",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow functions reject lexical this-like references",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "() => this",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "do not support 'this'"
+              ]
+            }
+          }
+        },
+        {
+          "op": "parse-expression",
+          "source": "() => arguments",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "do not support 'arguments'"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.arrow-functions-reject-block-bodies",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "arrow functions reject block bodies",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "x => { value: x }",
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "block bodies are not supported"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.performance-function-mode-supports-default-and-rest-parameters",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "performance function mode supports default and rest parameters",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "((x, y = x + bonus, ...rest) => y + rest.length)(2, undefined, 1, 2)",
+          "context": {
+            "bonus": 3
+          },
+          "options": {
+            "functionMode": "performance"
+          },
+          "expect": {
+            "value": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.performance-function-mode-preserves-destructuring-and-topic-capture",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "performance function mode preserves destructuring and topic capture",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "2 |> ((({ value, count = 1, ...rest }) => value + % + count + rest.extra)({ value: 3, extra: 4 }))",
+          "context": {},
+          "options": {
+            "functionMode": "performance"
+          },
+          "expect": {
+            "value": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.in-operator",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "in operator",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"x\" in obj",
+          "context": {
+            "obj": {
+              "x": 1
+            }
+          },
+          "options": {
+            "allowIn": true
+          },
+          "expect": {
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.in-operator-missing-key",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "in operator: missing key",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"y\" in obj",
+          "context": {
+            "obj": {
+              "x": 1
+            }
+          },
+          "options": {
+            "allowIn": true
+          },
+          "expect": {
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.in-operator-throws-for-primitive-right-hand-sides",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "in operator throws for primitive right-hand sides",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"x\" in value",
+          "context": {
+            "value": 1
+          },
+          "options": {
+            "allowIn": true
+          },
+          "expect": {
+            "error": {
+              "kind": "host",
+              "messageIncludes": [
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.in-operator-accepts-functions-on-the-right-hand-side",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "in operator accepts functions on the right-hand side",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"apply\" in fn",
+          "context": {
+            "fn": {
+              "$conformance": "callable",
+              "name": "no-op"
+            }
+          },
+          "options": {
+            "allowIn": true
+          },
+          "expect": {
+            "value": true
+          }
+        }
+      ],
+      "portability": "js-prototype-chain"
+    },
+    {
+      "id": "evaluator.instanceof-operator",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "instanceof operator",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "arr instanceof Array",
+          "context": {
+            "arr": [
+              1,
+              2
+            ],
+            "Array": {
+              "$conformance": "builtin",
+              "name": "Array"
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": true
+          }
+        }
+      ],
+      "portability": "js-prototype-chain"
+    },
+    {
+      "id": "evaluator.sequence-operator-returns-the-last-expression-result",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "sequence operator returns the last expression result",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1, 2, 3",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.sequence-operator-evaluates-expressions-from-left-to-right",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "sequence operator evaluates expressions from left to right",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "push(1), push(2), push(3)",
+          "context": {
+            "push": {
+              "$conformance": "callable",
+              "name": "record-argument"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": {
+              "value": 3,
+              "trace": [
+                1,
+                2,
+                3
+              ]
+            }
+          },
+          "observeTrace": true
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.parseexpression-emits-sequence-nodes-for-comma-expressions",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "parseExpression emits sequence nodes for comma expressions",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "1, 2, 3",
+          "options": [
+            {
+              "path": "/expressions/length",
+              "equals": 3
+            }
+          ],
+          "expect": {
+            "match": {
+              "type": "sequence"
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-global-eval",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked global: eval",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "eval(\"1+1\")",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-global-function",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked global: Function",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "Function(\"return 1\")",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-global-process",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked global: process",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "process.env",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-global-globalthis",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked global: globalThis",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "globalThis",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-property-proto",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked property: __proto__",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj.__proto__",
+          "context": {
+            "obj": {}
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-property-constructor",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked property: constructor",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj.constructor",
+          "context": {
+            "obj": {}
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.blocked-property-via-computed-access",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "blocked property via computed access",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "obj[\"__proto__\"]",
+          "context": {
+            "obj": {}
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.default-call-policy-blocks-custom-function-calls",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "default call policy blocks custom function calls",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "double(5)",
+          "context": {
+            "double": {
+              "$conformance": "callable",
+              "name": "multiply",
+              "factor": 2
+            }
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not permitted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.calls-can-be-disabled-entirely-with-allowcalls-false",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "calls can be disabled entirely with allowCalls=false",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "Math.max(1, 2)",
+          "context": {
+            "Math": {
+              "$conformance": "builtin",
+              "name": "Math"
+            }
+          },
+          "options": {
+            "allowCalls": false
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.regex-literals-can-be-disabled-with-allowregexliterals-false",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "regex literals can be disabled with allowRegexLiterals=false",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "/abc/",
+          "context": {},
+          "options": {
+            "allowRegexLiterals": false
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.default-root-context-mode-rejects-non-plain-objects",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "default root context mode rejects non-plain objects",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "count",
+          "context": {
+            "$conformance": "class-instance",
+            "own": {
+              "count": 2
+            }
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "plain object"
+              ]
+            }
+          }
+        }
+      ],
+      "portability": "js-object-model"
+    },
+    {
+      "id": "evaluator.copy-non-plain-root-context-mode-preserves-own-properties-only",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "copy-non-plain root context mode preserves own properties only",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "count",
+          "context": {
+            "$conformance": "class-instance",
+            "own": {
+              "count": 2
+            },
+            "prototype": {
+              "hidden": 99
+            }
+          },
+          "options": {
+            "rootContextMode": "copy-non-plain-to-null-prototype"
+          },
+          "expect": {
+            "value": 2
+          }
+        },
+        {
+          "op": "evaluate",
+          "source": "hidden",
+          "context": {
+            "$conformance": "class-instance",
+            "own": {
+              "count": 2
+            },
+            "prototype": {
+              "hidden": 99
+            }
+          },
+          "options": {
+            "rootContextMode": "copy-non-plain-to-null-prototype"
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not defined"
+              ]
+            }
+          }
+        }
+      ],
+      "portability": "js-object-model"
+    },
+    {
+      "id": "evaluator.copy-plain-data-to-null-prototype-rejects-accessor-properties-without-invoking-getters",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "copy-plain-data-to-null-prototype rejects accessor properties without invoking getters",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "nested.value",
+          "context": {
+            "nested": {
+              "$conformance": "accessor-object",
+              "property": "value",
+              "value": 2
+            }
+          },
+          "options": {
+            "rootContextMode": "copy-plain-data-to-null-prototype"
+          },
+          "observeTrace": true,
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "accessor properties"
+              ]
+            },
+            "trace": []
+          }
+        }
+      ],
+      "portability": "js-object-model"
+    },
+    {
+      "id": "evaluator.copy-plain-data-to-null-prototype-rejects-circular-references",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "copy-plain-data-to-null-prototype rejects circular references",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "value",
+          "context": {
+            "$conformance": "circular-context",
+            "value": 1
+          },
+          "options": {
+            "rootContextMode": "copy-plain-data-to-null-prototype"
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "circular references"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.copy-plain-data-to-null-prototype-supports-nested-plain-data-graphs",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "copy-plain-data-to-null-prototype supports nested plain data graphs",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "nested.value + items[0]",
+          "context": {
+            "nested": {
+              "value": 4
+            },
+            "items": [
+              3,
+              2,
+              1
+            ]
+          },
+          "options": {
+            "rootContextMode": "copy-plain-data-to-null-prototype"
+          },
+          "expect": {
+            "value": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.default-object-spread-mode-filters-blocked-keys",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "default object spread mode filters blocked keys",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ ...payload })",
+          "context": {
+            "payload": {
+              "$conformance": "json-object",
+              "source": "{\"__proto__\":{\"polluted\":true},\"ok\":1}"
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "value": {
+                "ok": 1
+              },
+              "prototype": "object",
+              "prototypeProperties": {}
+            }
+          },
+          "observePrototype": true
+        }
+      ],
+      "portability": "js-object-model"
+    },
+    {
+      "id": "evaluator.object-spread-mode-none-keeps-legacy-spread-behavior",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object spread mode none keeps legacy spread behavior",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ ...payload })",
+          "context": {
+            "payload": {
+              "$conformance": "json-object",
+              "source": "{\"__proto__\":{\"polluted\":true},\"ok\":1}"
+            }
+          },
+          "options": {
+            "objectLiteralMode": "none"
+          },
+          "expect": {
+            "value": {
+              "value": {
+                "ok": 1
+              },
+              "prototype": "custom",
+              "prototypeProperties": {
+                "polluted": true
+              }
+            }
+          },
+          "observePrototype": true
+        }
+      ],
+      "portability": "js-object-model"
+    },
+    {
+      "id": "evaluator.object-spread-plain-object-only-mode-rejects-arrays",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object spread plain-object-only mode rejects arrays",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ ...items })",
+          "context": {
+            "items": [
+              1,
+              2,
+              3
+            ]
+          },
+          "options": {
+            "objectLiteralMode": "plain-object-only"
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "plain object"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.object-spread-safe-mode-returns-null-prototype-objects",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object spread safe mode returns null-prototype objects",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "({ a: 1 })",
+          "context": {},
+          "options": {
+            "objectLiteralMode": "safe"
+          },
+          "expect": {
+            "value": {
+              "value": {
+                "a": 1
+              },
+              "prototype": "null",
+              "prototypeProperties": {}
+            }
+          },
+          "observePrototype": true
+        }
+      ]
+    },
+    {
+      "id": "evaluator.max-source-length-rejects-oversized-expressions",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "max source length rejects oversized expressions",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "count + 1",
+          "options": {
+            "maxSourceLength": 5
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "maximum source length"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.max-ast-nodes-rejects-oversized-trees",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "max AST nodes rejects oversized trees",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "1 + 2 * 3",
+          "options": {
+            "maxAstNodes": 4
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "maximum AST node count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.max-ast-depth-rejects-deep-trees",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "max AST depth rejects deep trees",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "a + (b * (c - d))",
+          "options": {
+            "maxAstDepth": 3
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "maximum AST depth"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.max-steps-rejects-expensive-evaluations",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "max steps rejects expensive evaluations",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 + 2 + 3",
+          "context": {},
+          "options": {
+            "maxSteps": 4
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "Maximum evaluation steps"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.max-steps-counts-spread-elements-in-array-literals",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "max steps counts spread elements in array literals",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "[...items]",
+          "context": {
+            "items": [
+              1,
+              2,
+              3
+            ]
+          },
+          "options": {
+            "maxSteps": 5
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "Maximum evaluation steps"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.max-steps-counts-spread-elements-in-call-arguments",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "max steps counts spread elements in call arguments",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "collect(...items)",
+          "context": {
+            "items": [
+              1,
+              2,
+              3
+            ],
+            "collect": {
+              "$conformance": "callable",
+              "name": "collect-count"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all",
+            "maxSteps": 5
+          },
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "Maximum evaluation steps"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.undefined-variable-throws-jsevalerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "undefined variable throws JSEvalError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "notDefined",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not defined"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.member-of-null-throws-descriptively",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "member of null throws descriptively",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "x.y",
+          "context": {
+            "x": null
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "null"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.non-function-call-throws-descriptively",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "non-function call throws descriptively",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "x()",
+          "context": {
+            "x": 42
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "not a function"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.parse-error-reports-position",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "parse error reports position",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 + * 2",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                ""
+              ],
+              "startType": "number"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.parse-error-message-contains-source-snippet",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "parse error message contains source snippet",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "foo + * bar",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "foo + * bar"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.lex-error-reports-position",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "lex error reports position",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 + @bad",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "lex",
+              "messageIncludes": [
+                ""
+              ],
+              "posType": "number"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.eval-error-reports-meaningful-message-for-chained-access",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "eval error reports meaningful message for chained access",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "a.b.c",
+          "context": {
+            "a": {}
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "eval",
+              "messageIncludes": [
+                "undefined"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.unterminated-string-lex-error",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "unterminated string lex error",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"unterminated",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "lex",
+              "messageIncludes": [
+                "position"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.unexpected-token-parse-error-points-to-the-bad-token",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "unexpected token parse error points to the bad token",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1 2",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                ""
+              ],
+              "start": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.assignment-throws-parseerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "assignment throws ParseError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "x = 1",
+          "context": {
+            "x": 1
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not allowed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.compound-assignment-throws-parseerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "compound assignment throws ParseError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "x += 1",
+          "context": {
+            "x": 1
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not allowed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.new-keyword-throws-parseerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "new keyword throws ParseError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "new Date()",
+          "context": {},
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "'new' is not allowed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.delete-keyword-throws-parseerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "delete keyword throws ParseError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "delete obj.x",
+          "context": {
+            "obj": {
+              "x": 1
+            }
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "'delete' is not allowed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.prefix-throws-parseerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "prefix ++ throws ParseError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "++x",
+          "context": {
+            "x": 1
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not allowed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.await-without-option-throws-parseerror",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "await without option throws ParseError",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "await p",
+          "context": {
+            "p": null
+          },
+          "options": {},
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.await-with-option-works",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "await with option works",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "await 42",
+          "context": {},
+          "options": {
+            "allowAwait": true
+          },
+          "expect": {
+            "value": 42
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.conditional-rendering-idiom",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "conditional rendering idiom",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "items.length > 0 ? items.join(\", \") : \"none\"",
+          "context": {
+            "items": [
+              "a",
+              "b",
+              "c"
+            ]
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": "a, b, c"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.safe-navigation-with-fallback",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "safe navigation with fallback",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "user?.profile?.bio ?? \"No bio\"",
+          "context": {
+            "user": {
+              "profile": null
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": "No bio"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.array-map-and-join",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "array map and join",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "items.map(fn).join(\" | \")",
+          "context": {
+            "items": [
+              1,
+              2,
+              3
+            ],
+            "fn": {
+              "$conformance": "callable",
+              "name": "square"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": "1 | 4 | 9"
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.object-property-access-and-formatting",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "object property access and formatting",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "`${user.firstName} ${user.lastName} (${user.age})`",
+          "context": {
+            "user": {
+              "firstName": "Jane",
+              "lastName": "Doe",
+              "age": 30
+            }
+          },
+          "options": {},
+          "expect": {
+            "value": "Jane Doe (30)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "evaluator.pipeline-for-data-transformation",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "pipeline for data transformation",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "\"  hello  \" |> trim(%) |> upper(%)",
+          "context": {
+            "trim": {
+              "$conformance": "callable",
+              "name": "trim"
+            },
+            "upper": {
+              "$conformance": "callable",
+              "name": "upper"
+            }
+          },
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "expect": {
+            "value": "HELLO"
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "evaluator.numeric-separator-in-source",
+      "sourceTest": {
+        "suite": "evaluator",
+        "name": "numeric separator in source",
+        "file": "tests/evaluator.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluate",
+          "source": "1_000_000 + 234_567",
+          "context": {},
+          "options": {},
+          "expect": {
+            "value": 1234567
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.parses-plain-text",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "parses plain text",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "hello world",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [],
+              "segments": [
+                {
+                  "type": "text",
+                  "value": "hello world"
+                }
+              ]
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.parses-expression-with-double-braces",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "parses expression with double braces",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "Hi {{ user.name }}!",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [],
+              "segments": [
+                {
+                  "type": "text"
+                },
+                {
+                  "type": "expression",
+                  "expr": "user.name",
+                  "delimiterLength": 2
+                },
+                {
+                  "type": "text"
+                }
+              ]
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.supports-longer-matching-delimiters",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "supports longer matching delimiters",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "Value: {{{{ a + 1 }}}}",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [],
+              "segments": [
+                {
+                  "type": "text"
+                },
+                {
+                  "type": "expression",
+                  "expr": "a + 1",
+                  "delimiterLength": 4
+                }
+              ]
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.keeps-object-literal-braces-inside-expression",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "keeps object literal braces inside expression",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "X {{ ({ a: 1 }).a }} Y",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [],
+              "segments": [
+                {
+                  "type": "text"
+                },
+                {
+                  "type": "expression",
+                  "expr": "({ a: 1 }).a"
+                },
+                {
+                  "type": "text"
+                }
+              ]
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.supports-longer-delimiters-when-the-expression-contains-a-shorter-closing-run",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "supports longer delimiters when the expression contains a shorter closing run",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "Value: {{{{ \"}}\" }}}}",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [],
+              "segments": [
+                {
+                  "type": "text"
+                },
+                {
+                  "type": "expression",
+                  "expr": "\"}}\"",
+                  "delimiterLength": 4
+                }
+              ]
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.matches-the-next-closing-delimiter-run-without-parsing-expression-syntax",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "matches the next closing delimiter run without parsing expression syntax",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "A {{ /* }} */ 1 }} B",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [],
+              "segments": [
+                {
+                  "type": "text",
+                  "value": "A "
+                },
+                {
+                  "type": "expression",
+                  "expr": "/*",
+                  "delimiterLength": 2
+                },
+                {
+                  "type": "text",
+                  "value": " */ 1 }} B"
+                }
+              ]
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.reports-unclosed-expression",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "reports unclosed expression",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "Hi {{ user.name",
+          "options": {},
+          "expect": {
+            "match": {
+              "errors": [
+                {
+                  "kind": "template"
+                }
+              ]
+            },
+            "paths": [
+              {
+                "path": "/errors/length",
+                "equals": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.rejects-oversized-template-sources",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "rejects oversized template sources",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "hello world",
+          "options": {
+            "maxSourceLength": 5
+          },
+          "expect": {
+            "match": {
+              "segments": []
+            },
+            "paths": [
+              {
+                "path": "/errors/0/message",
+                "contains": "maximum source length"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-parser.rejects-templates-with-too-many-placeholders",
+      "sourceTest": {
+        "suite": "template parser",
+        "name": "rejects templates with too many placeholders",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "A {{ first }} B {{ second }}",
+          "options": {
+            "maxPlaceholders": 1
+          },
+          "expect": {
+            "match": {
+              "segments": []
+            },
+            "paths": [
+              {
+                "path": "/errors/0/message",
+                "contains": "maximum placeholder count"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.renders-markdown-template",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "renders markdown template",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "render-template",
+          "source": "Hi {{ name }}",
+          "context": {
+            "name": "John"
+          },
+          "options": {},
+          "expect": {
+            "value": {
+              "output": "Hi John",
+              "errors": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.renders-html-safe-values-when-format-html",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "renders html-safe values when format=html",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "render-template",
+          "source": "<p>{{ html }}</p>",
+          "context": {
+            "html": "<b>X</b>"
+          },
+          "options": {
+            "format": "html"
+          },
+          "expect": {
+            "value": {
+              "output": "<p>&lt;b&gt;X&lt;/b&gt;</p>",
+              "errors": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.collects-eval-errors-in-non-strict-mode",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "collects eval errors in non-strict mode",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "render-template",
+          "source": "A {{ unknown }} B",
+          "context": {},
+          "options": {},
+          "expect": {
+            "match": {
+              "output": "A  B",
+              "errors": [
+                {
+                  "kind": "eval"
+                }
+              ]
+            },
+            "paths": [
+              {
+                "path": "/errors/length",
+                "equals": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.stops-in-strict-mode-on-first-error",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "stops in strict mode on first error",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "render-template",
+          "source": "A {{ unknown }} B {{ 1 + 1 }}",
+          "context": {},
+          "options": {
+            "strict": true
+          },
+          "expect": {
+            "match": {
+              "output": "A ",
+              "errors": [
+                {
+                  "kind": "eval"
+                }
+              ]
+            },
+            "paths": [
+              {
+                "path": "/errors/length",
+                "equals": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.forwards-eval-options-to-expression-rendering",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "forwards eval options to expression rendering",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "render-template",
+          "source": "Hi {{ format(name) }}",
+          "context": {
+            "name": "Ada",
+            "format": {
+              "$conformance": "callable",
+              "name": "upper"
+            }
+          },
+          "options": {
+            "evalOptions": {
+              "callPolicy": "allow-all"
+            }
+          },
+          "expect": {
+            "value": {
+              "output": "Hi ADA",
+              "errors": []
+            }
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "template-renderer.compiletemplate-supports-repeated-rendering",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "compileTemplate supports repeated rendering",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-template-render",
+          "source": "Hi {{ name }}",
+          "options": {},
+          "contexts": [
+            {
+              "name": "Ada"
+            },
+            {
+              "name": "Linus"
+            }
+          ],
+          "expect": {
+            "value": [
+              {
+                "output": "Hi Ada",
+                "errors": []
+              },
+              {
+                "output": "Hi Linus",
+                "errors": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.compiletemplate-reuses-baked-eval-options",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "compileTemplate reuses baked eval options",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-template-render",
+          "source": "Hi {{ format(name) }}",
+          "options": {
+            "evalOptions": {
+              "callPolicy": "allow-all"
+            }
+          },
+          "contexts": [
+            {
+              "name": "Ada",
+              "format": {
+                "$conformance": "callable",
+                "name": "upper"
+              }
+            }
+          ],
+          "expect": {
+            "value": [
+              {
+                "output": "Hi ADA",
+                "errors": []
+              }
+            ]
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "template-renderer.compiletemplate-surfaces-precomputed-parse-errors-during-rendering",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "compileTemplate surfaces precomputed parse errors during rendering",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-template-render",
+          "source": "A {{ value + }} B",
+          "options": {},
+          "contexts": [
+            {
+              "value": 1
+            }
+          ],
+          "expect": {
+            "match": [
+              {
+                "output": "A  B",
+                "errors": [
+                  {
+                    "kind": "parse"
+                  }
+                ]
+              }
+            ],
+            "paths": [
+              {
+                "path": "/0/errors/length",
+                "equals": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template-renderer.applies-template-parse-budgets-during-rendering",
+      "sourceTest": {
+        "suite": "template renderer",
+        "name": "applies template parse budgets during rendering",
+        "file": "tests/template.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "render-template",
+          "source": "A {{ first }} B {{ second }}",
+          "context": {
+            "first": "x",
+            "second": "y"
+          },
+          "options": {
+            "maxPlaceholders": 1
+          },
+          "expect": {
+            "match": {
+              "output": "",
+              "errors": [
+                {}
+              ]
+            },
+            "paths": [
+              {
+                "path": "/errors/0/message",
+                "contains": "maximum placeholder count"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.tokenizeexpression-exposes-lexer-output",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "tokenizeExpression exposes lexer output",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "tokenize-expression",
+          "source": "count + 1",
+          "options": {},
+          "expect": {
+            "value": [
+              "count",
+              "+",
+              "1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.parseexpression-exposes-the-expression-ast",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "parseExpression exposes the expression AST",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "count + 1",
+          "options": {},
+          "expect": {
+            "match": {
+              "type": "binary",
+              "operator": "+"
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.compileexpression-supports-reusable-evaluation",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "compileExpression supports reusable evaluation",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-evaluate",
+          "source": "count + 1",
+          "options": {},
+          "contexts": [
+            {
+              "count": 1
+            },
+            {
+              "count": 4
+            }
+          ],
+          "expect": {
+            "value": [
+              2,
+              5
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.compileexpression-supports-generated-arrow-functions-with-the-default-call-policy",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "compileExpression supports generated arrow functions with the default call policy",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-evaluate",
+          "source": "(value => value + step)(count)",
+          "options": {},
+          "contexts": [
+            {
+              "count": 2,
+              "step": 3
+            }
+          ],
+          "expect": {
+            "value": [
+              5
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.compileexpression-supports-the-performance-function-backend-for-generated-arrows",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "compileExpression supports the performance function backend for generated arrows",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-evaluate",
+          "source": "(value => value + step)(count)",
+          "options": {
+            "functionMode": "performance"
+          },
+          "contexts": [
+            {
+              "count": 2,
+              "step": 3
+            }
+          ],
+          "expect": {
+            "value": [
+              5
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.compile-alias-is-exported-from-the-root-entrypoint",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "compile alias is exported from the root entrypoint",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-evaluate",
+          "source": "count + 2",
+          "options": {},
+          "contexts": [
+            {
+              "count": 3
+            }
+          ],
+          "includeSource": true,
+          "expect": {
+            "value": {
+              "source": "count + 2",
+              "values": [
+                5
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.allowallcalls-is-exported-from-the-root-entrypoint",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "allowAllCalls is exported from the root entrypoint",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-evaluate",
+          "source": "double(count)",
+          "options": {
+            "callPolicy": "allow-all"
+          },
+          "contexts": [
+            {
+              "count": 3,
+              "double": {
+                "$conformance": "callable",
+                "name": "multiply",
+                "factor": 2
+              }
+            }
+          ],
+          "expect": {
+            "value": [
+              6
+            ]
+          }
+        }
+      ],
+      "portability": "host-callback"
+    },
+    {
+      "id": "public-api.defaultcallpermissionpolicy-is-exported-from-the-root-entrypoint",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "defaultCallPermissionPolicy is exported from the root entrypoint",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "call-permission",
+          "callable": "String.prototype.normalize",
+          "receiver": "Å",
+          "kind": "call",
+          "source": "\"A\\u030A\".normalize(\"NFC\")",
+          "expect": {
+            "value": true
+          }
+        }
+      ],
+      "portability": "js-host-policy"
+    },
+    {
+      "id": "public-api.parseexpression-can-disable-arrow-functions",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "parseExpression can disable arrow functions",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-expression",
+          "source": "value => value",
+          "options": {
+            "allowArrowFunctions": false
+          },
+          "expect": {
+            "error": {
+              "kind": "parse",
+              "messageIncludes": [
+                "Arrow functions are not enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.jsevaluator-merges-base-and-per-call-contexts-without-leaking-overrides",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "JSEvaluator merges base and per-call contexts without leaking overrides",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "evaluator-evaluate",
+          "source": "count + step",
+          "options": {},
+          "baseContext": {
+            "count": 1,
+            "step": 2
+          },
+          "contexts": [
+            null,
+            {
+              "count": 5
+            },
+            null
+          ],
+          "expect": {
+            "value": [
+              3,
+              7,
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.template-helpers-remain-available-from-the-root-entrypoint",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "template helpers remain available from the root entrypoint",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "parse-template",
+          "source": "Hi {{ name }}",
+          "options": {},
+          "expect": {
+            "paths": [
+              {
+                "path": "/segments/length",
+                "equals": 2
+              }
+            ]
+          }
+        },
+        {
+          "op": "render-template",
+          "source": "Hi {{ name }}",
+          "context": {
+            "name": "Ada"
+          },
+          "options": {},
+          "expect": {
+            "match": {
+              "output": "Hi Ada"
+            },
+            "paths": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-api.compiletemplate-is-exported-from-the-root-entrypoint",
+      "sourceTest": {
+        "suite": "public API",
+        "name": "compileTemplate is exported from the root entrypoint",
+        "file": "tests/public-api.test.ts"
+      },
+      "profile": "legacy-js-v1",
+      "checks": [
+        {
+          "op": "compile-template-render",
+          "source": "Hi {{ name }}",
+          "options": {},
+          "contexts": [
+            {
+              "name": "Ada"
+            }
+          ],
+          "includeSource": true,
+          "expect": {
+            "value": {
+              "source": "Hi {{ name }}",
+              "values": [
+                {
+                  "output": "Hi Ada",
+                  "errors": []
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

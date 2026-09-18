@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billstark001/pure-expr/conformance/v1/schema.json",
+  "title": "pure-expr conformance corpus v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "corpusVersion",
+    "semanticProfile",
+    "legacyTestCount",
+    "caseCount",
+    "cases"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "corpusVersion": { "type": "string" },
+    "semanticProfile": { "const": "legacy-js-v1" },
+    "description": { "type": "string" },
+    "legacyTestCount": { "type": "integer", "minimum": 0 },
+    "caseCount": { "type": "integer", "minimum": 0 },
+    "cases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": ["id", "sourceTest", "profile", "checks"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sourceTest": {
+          "type": "object",
+          "required": ["file", "suite", "name"],
+          "properties": {
+            "file": { "type": "string" },
+            "suite": { "type": "string" },
+            "name": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "profile": { "const": "legacy-js-v1" },
+        "portability": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/check" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "check": {
+      "type": "object",
+      "required": ["op", "expect"],
+      "properties": {
+        "op": {
+          "enum": [
+            "evaluate",
+            "parse-expression",
+            "tokenize-expression",
+            "compile-evaluate",
+            "compiled-nested-evaluate",
+            "evaluator-evaluate",
+            "parse-template",
+            "render-template",
+            "compile-template-render",
+            "call-permission"
+          ]
+        },
+        "source": { "type": "string" },
+        "context": {},
+        "contexts": { "type": "array" },
+        "baseContext": {},
+        "options": { "type": "object" },
+        "expect": { "$ref": "#/$defs/expectation" },
+        "observeTrace": { "type": "boolean" },
+        "observePrototype": { "type": "boolean" },
+        "includeSource": { "type": "boolean" },
+        "callable": { "type": "string" },
+        "receiver": {},
+        "kind": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "expectation": {
+      "type": "object",
+      "properties": {
+        "value": {},
+        "match": {},
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": { "type": "string" },
+              "equals": {},
+              "contains": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "trace": { "type": "array" },
+        "error": {
+          "type": "object",
+          "required": ["kind", "messageIncludes"],
+          "properties": {
+            "kind": { "enum": ["lex", "parse", "eval", "host"] },
+            "messageIncludes": { "type": "array", "items": { "type": "string" } },
+            "start": { "type": "integer" },
+            "startType": { "type": "string" },
+            "posType": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
+
