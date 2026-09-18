@@ -94,7 +94,7 @@ export interface CompiledArrowRuntime {
 
 export interface EvalState extends ExecutionBudget {
   context: Readonly<Record<string, unknown>>
-  budget: ExecutionBudget
+  budget?: ExecutionBudget
   topics: unknown[]
   opts: Readonly<JSEvalOptions>
 }

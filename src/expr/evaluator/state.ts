@@ -6,14 +6,14 @@ export function createEvalState(
   opts: Readonly<JSEvalOptions>,
   sharedBudget?: ExecutionBudget,
 ): EvalState {
-  const state = {
+  const state: EvalState = {
     context,
     callDepth: 0,
     steps: 0,
     topics: [],
     opts,
-  } as unknown as EvalState
-  state.budget = sharedBudget ?? state
+  }
+  if (sharedBudget) state.budget = sharedBudget
   return state
 }
 
@@ -21,20 +21,23 @@ export function consumeStep(state: EvalState, node: AstNode, amount = 1): void {
   const max = state.opts.maxSteps
   if (max === undefined) return
 
-  state.budget.steps += amount
-  if (state.budget.steps > max) {
+  const budget = state.budget ?? state
+  budget.steps += amount
+  if (budget.steps > max) {
     throw new JSEvalError(`Maximum evaluation steps (${max}) exceeded`, node)
   }
 }
 
 export function enterCall(node: ExpressionNode, state: EvalState): void {
   const max = state.opts.maxCallDepth ?? 32
-  if (state.budget.callDepth >= max) {
+  const budget = state.budget ?? state
+  if (budget.callDepth >= max) {
     throw new JSEvalError(`Maximum call depth (${max}) exceeded`, node)
   }
-  state.budget.callDepth += 1
+  budget.callDepth += 1
 }
 
 export function leaveCall(state: EvalState): void {
-  state.budget.callDepth -= 1
+  const budget = state.budget ?? state
+  budget.callDepth -= 1
 }

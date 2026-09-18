@@ -197,7 +197,7 @@ function evalArrowFunctionDefault(node: ArrowFunctionExpression, state: EvalStat
   const capturedContext = state.context
   const capturedTopics = state.topics.slice()
   const capturedOpts = state.opts
-  const capturedBudget = state.budget
+  const capturedBudget = state.budget ?? state
   const expectedArgumentCount = getArrowExpectedArgumentCount(node.params)
 
   return createPureExprArrowFunction((...args: unknown[]) => {
@@ -218,7 +218,7 @@ function evalArrowFunctionPerformance(node: ArrowFunctionExpression, state: Eval
   const capturedContext = state.context
   const capturedTopics = state.topics.slice()
   const capturedOpts = state.opts
-  const capturedBudget = state.budget
+  const capturedBudget = state.budget ?? state
 
   return createPureExprArrowFunction((...args: unknown[]) => {
     const localContext = cloneContextRecord(capturedContext)
@@ -289,7 +289,66 @@ function evalCall(node: CallExpression, state: EvalState): unknown {
   }
 
   if (node.optional && fn == null) return undefined
-  return invokeCallable(fn, thisValue, node.arguments, node, state)
+  if (typeof fn !== 'function') {
+    throw new JSEvalError(
+      `'${node.callee.type === 'Identifier' ? node.callee.name : 'value'}' is not a function`,
+      node,
+    )
+  }
+
+  const callable = fn as JSCallable
+  ensureCallAllowed('call', callable, thisValue, node, state)
+  const args = node.arguments
+  switch (args.length) {
+    case 0:
+      return safeCall0(callable, thisValue, node, state)
+    case 1:
+      if (args[0].type !== 'SpreadElement') {
+        return safeCall1(callable, thisValue, evalNode(args[0], state), node, state)
+      }
+      break
+    case 2:
+      if (args[0].type !== 'SpreadElement' && args[1].type !== 'SpreadElement') {
+        return safeCall2(
+          callable,
+          thisValue,
+          evalNode(args[0], state),
+          evalNode(args[1], state),
+          node,
+          state,
+        )
+      }
+      break
+    case 3:
+      if (args.every((argument) => argument.type !== 'SpreadElement')) {
+        return safeCall3(
+          callable,
+          thisValue,
+          evalNode(args[0], state),
+          evalNode(args[1], state),
+          evalNode(args[2], state),
+          node,
+          state,
+        )
+      }
+      break
+    case 4:
+      if (args.every((argument) => argument.type !== 'SpreadElement')) {
+        return safeCall4(
+          callable,
+          thisValue,
+          evalNode(args[0], state),
+          evalNode(args[1], state),
+          evalNode(args[2], state),
+          evalNode(args[3], state),
+          node,
+          state,
+        )
+      }
+      break
+  }
+
+  return safeCall(callable, thisValue, evalArgs(args, state), node, state)
 }
 
 function evalChain(node: ChainExpression, state: EvalState): unknown {
