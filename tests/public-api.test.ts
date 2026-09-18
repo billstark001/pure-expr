@@ -7,6 +7,7 @@ import {
   compileTemplate,
   defaultCallPermissionPolicy,
   JSEvaluator,
+  JSLexer,
   parseExpression,
   parseTemplate,
   renderTemplate,
@@ -17,7 +18,13 @@ import {
 
 describe('public API', () => {
   test('tokenizeExpression exposes lexer output', () => {
-    expect(tokenizeExpression('count + 1').map((token) => token.raw)).toEqual(['count', '+', '1'])
+    expect(tokenizeExpression('count + 1').map((token) => token.value)).toEqual(['count', '+', '1'])
+  })
+
+  test('JSLexer options are available from the package entrypoint', () => {
+    const [token] = new JSLexer('0xff', { raw: true, numbers: { radices: [16] } }).tokenize()
+
+    expect(token).toEqual({ kind: 'number', value: '0xff', raw: '0xff', start: 0, end: 4 })
   })
 
   test('parseExpression exposes the expression AST', () => {

@@ -416,39 +416,39 @@ describe('evaluator', () => {
       ),
     ).toBe(10)
   })
-  test.each([
-    'default',
-    'performance',
-  ] as const)('%s arrow backend shares the caller execution budget', (functionMode) => {
-    expect(() =>
-      ev(
-        'applyMany(x => x + 1)',
-        {
-          applyMany: (callback: (value: number) => number) => {
-            for (let index = 0; index < 20; index += 1) callback(index)
+  test.each(['default', 'performance'] as const)(
+    '%s arrow backend shares the caller execution budget',
+    (functionMode) => {
+      expect(() =>
+        ev(
+          'applyMany(x => x + 1)',
+          {
+            applyMany: (callback: (value: number) => number) => {
+              for (let index = 0; index < 20; index += 1) callback(index)
+            },
           },
-        },
-        { ...ALLOW_ALL_CALLS, functionMode, maxSteps: 12 },
-      ),
-    ).toThrow('Maximum evaluation steps')
-  })
-  test.each([
-    'default',
-    'performance',
-  ] as const)('%s arrow backend shares the caller call-depth budget', (functionMode) => {
-    const call = (callback: () => unknown) => callback()
-    expect(() =>
-      ev(
-        'call(() => call(() => call(() => 1)))',
-        { call },
-        {
-          ...ALLOW_ALL_CALLS,
-          functionMode,
-          maxCallDepth: 2,
-        },
-      ),
-    ).toThrow('Maximum call depth')
-  })
+          { ...ALLOW_ALL_CALLS, functionMode, maxSteps: 12 },
+        ),
+      ).toThrow('Maximum evaluation steps')
+    },
+  )
+  test.each(['default', 'performance'] as const)(
+    '%s arrow backend shares the caller call-depth budget',
+    (functionMode) => {
+      const call = (callback: () => unknown) => callback()
+      expect(() =>
+        ev(
+          'call(() => call(() => call(() => 1)))',
+          { call },
+          {
+            ...ALLOW_ALL_CALLS,
+            functionMode,
+            maxCallDepth: 2,
+          },
+        ),
+      ).toThrow('Maximum call depth')
+    },
+  )
   test('performance arrows preserve optional-chain propagation and property policies', () => {
     const inherited = Object.create({ value: 1 }) as Record<string, unknown>
 

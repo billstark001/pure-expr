@@ -1,4 +1,4 @@
-import type { JSToken } from '../lexer.js'
+import type { JSToken } from '../lexer/types.js'
 import type {
   ArrowFunctionExpression,
   BindingPattern,

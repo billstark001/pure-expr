@@ -1,4 +1,4 @@
-import type { JSToken } from '../lexer.js'
+import type { JSToken } from '../lexer/types.js'
 
 /** Parser feature flags for the expression grammar. */
 export interface JSParserOptions {

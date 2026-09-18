@@ -144,7 +144,50 @@ evaluate('((value, suffix = "!") => `${value}${suffix}`)(name)', {
 // 'Ada!'
 ```
 
-For custom pipelines you can also use JSLexer, JSExpressionParser, JSEvaluator, and the exported AST node types.
+For custom pipelines you can also use `JSLexer`, `JSExpressionParser`, `JSEvaluator`, and the exported AST node types.
+
+### Lexer API
+
+`tokenizeExpression(source)` is the simple high-level entry point. Use `JSLexer` when you need exact source spellings, a restricted number syntax, or custom tokens:
+
+```ts
+import { JSLexer, type JSLexerRule } from 'pure-expr/expr';
+
+const wordOperators: readonly JSLexerRule[] = [{
+ match: (source, position) =>
+  source.startsWith('and', position) &&
+  !/[a-zA-Z0-9_$]/.test(source[position + 3] ?? ''),
+ advance: (_source, position) => ({
+  kind: 'op',
+  value: '&&',
+  start: position,
+  end: position + 3,
+ }),
+}];
+
+const tokens = new JSLexer('enabled and visible', {
+ raw: true,
+ numbers: {
+  radices: [10],
+  bigint: false,
+  separators: true,
+ },
+ rules: wordOperators,
+}).tokenize();
+
+tokens.map(({ value, raw }) => ({ value, raw }));
+// [
+//   { value: 'enabled', raw: 'enabled' },
+//   { value: '&&', raw: 'and' },
+//   { value: 'visible', raw: 'visible' },
+// ]
+```
+
+Each `JSToken` always has `kind`, `value`, `start`, and `end`. The optional `raw` field is omitted by default to avoid duplicating the source spelling; enable `{ raw: true }` when a custom rule rewrites `value` or tooling needs the original text. Template tokens additionally expose cooked/raw quasis and the token streams for embedded expressions through `tmpl`.
+
+Custom rules are tested in declaration order before built-in tokenization. Their `match` and `advance` callbacks receive the full source, current position, and preceding tokens; normal functions also receive the active lexer as `this`. `advance` must return a token beginning at the current position with a non-empty, in-bounds range. Rules apply recursively inside JavaScript template-literal expressions.
+
+Number policy defaults match the full supported syntax. `numbers.radices` accepts any subset of `2`, `8`, `10`, and `16`; `numbers.bigint` and `numbers.separators` independently control bigint suffixes and numeric separators. These low-level restrictions only apply when constructing `JSLexer` directly.
 
 ## Template Features
 
@@ -204,9 +247,12 @@ pnpm run format
 pnpm run lint
 pnpm run bench:expr
 pnpm run bench:template
+pnpm run bench:lexer
 pnpm run ci
 ```
 
 The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, short repeated, and Hack-pipe-heavy expressions. It also reports arrow-function creation and invocation throughput for both the `default` and `performance` function backends.
 
 The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, and short repeated templates.
+
+The lexer benchmark reports source and token throughput for the default path, source retention with `raw: true`, and custom-rule misses and hits.

@@ -1,4 +1,4 @@
-import type { JSToken } from '../lexer.js'
+import type { JSToken } from '../lexer/types.js'
 import type { ExpressionNode, TemplateLiteral } from '../node-types.js'
 import { JSParseError } from './errors.js'
 

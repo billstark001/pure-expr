@@ -1,5 +1,5 @@
 import { type JSEvalOptions, JSEvaluator } from './evaluator.js'
-import { JSLexer, type JSToken } from './lexer.js'
+import { JSLexer, type JSToken } from './lexer/index.js'
 import type { BindingPattern, ExpressionNode } from './node-types.js'
 import { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
 
@@ -26,12 +26,16 @@ export {
 } from './evaluator.js'
 export {
   cookTemplate,
+  type JSLexerOptions,
+  type JSLexerRule,
   JSLexError,
   JSLexer,
+  type JSNumberOptions,
   type JSToken,
   type JSTokenKind,
+  type NumberRadix,
   type TemplateQuasi,
-} from './lexer.js'
+} from './lexer/index.js'
 export type {
   ArrayExpression,
   ArrayPattern,

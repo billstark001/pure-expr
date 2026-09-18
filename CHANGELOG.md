@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added injectable `propertyAccess` evaluation policies and exported `inheritedPropertyAccess` and `ownPropertyAccess` policy helpers.
 - Added `ChainExpression` evaluation with JavaScript-compatible optional-chain short-circuit propagation.
+- Added configurable lexer number policies, ordered custom lexer rules, optional raw source preservation, and a public lexer position.
+- Added a lexer-focused throughput benchmark covering raw source retention and custom rules.
 
 ### Changed
 
@@ -17,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Represented `undefined` as an ESTree `Identifier`, split tagged templates into `TaggedTemplateExpression` and `TemplateLiteral`, and represented arrow parameters with standard ESTree patterns.
 - Arrow-function calls now share execution-step and call-depth budgets with their originating evaluation.
 - Removed all compatibility aliases for the previous AST node types and field names.
+- Lexer tokens now expose their parser-facing spelling as `value`; exact source spelling is available as optional `raw` data when requested.
 
 ### Fixed
 
