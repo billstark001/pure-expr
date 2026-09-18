@@ -1,4 +1,6 @@
 import type { JSToken, JSTokenKind } from '../lexer/types.js'
+import { JSParseError, type JSParserOptions } from './errors.js'
+import { FORBIDDEN_ARROW_BINDING_IDENTIFIERS } from './grammar.js'
 import type {
   ArrayPattern,
   ArrowFunctionExpression,
@@ -10,8 +12,6 @@ import type {
   ObjectPattern,
   RestElement,
 } from './node-types.js'
-import { JSParseError, type JSParserOptions } from './errors.js'
-import { FORBIDDEN_ARROW_BINDING_IDENTIFIERS } from './grammar.js'
 import { parseStringValue } from './shared.js'
 import { validateArrowFunction } from './validation.js'
 

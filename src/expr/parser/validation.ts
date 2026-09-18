@@ -1,12 +1,12 @@
 import type { JSToken } from '../lexer/types.js'
+import { JSParseError } from './errors.js'
+import { FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS } from './grammar.js'
 import type {
   ArrowFunctionExpression,
   BindingPattern,
   ExpressionNode,
   Property,
 } from './node-types.js'
-import { JSParseError } from './errors.js'
-import { FORBIDDEN_ARROW_REFERENCE_IDENTIFIERS } from './grammar.js'
 
 export function assertValidLogicalMixing(
   operator: '&&' | '||' | '??',

@@ -1,9 +1,9 @@
 import {
   CC_BACKSLASH,
   CC_BACKTICK,
+  CC_CR,
   CC_DOLLAR,
   CC_DOT,
-  CC_CR,
   CC_DOUBLE_QUOTE,
   CC_LEFT_BRACE,
   CC_LEFT_BRACKET,
@@ -19,7 +19,7 @@ import {
   isLineTerminatorCode,
   isRegexFlagCode,
 } from './char-codes.js'
-import { compileNumberPolicy, isBigIntLiteral, scanNumber, type NumberPolicy } from './number.js'
+import { compileNumberPolicy, isBigIntLiteral, type NumberPolicy, scanNumber } from './number.js'
 import { scanOperatorLength } from './operators.js'
 import { cookTemplate } from './template.js'
 import { skipTrivia } from './trivia.js'

@@ -1,8 +1,8 @@
 import {
   CC_0,
+  CC_B_LOWER,
   CC_BACKSLASH,
   CC_BACKTICK,
-  CC_B_LOWER,
   CC_DOLLAR,
   CC_F_LOWER,
   CC_LEFT_BRACE,
