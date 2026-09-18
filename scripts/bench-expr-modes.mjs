@@ -46,6 +46,26 @@ const EXPR_CASES = [
     },
   },
   {
+    name: 'optional-chain-heavy',
+    expression:
+      'user?.profile.metrics?.primary.current + account?.plan.name.length + (missing?.value ?? fallback)',
+    context: {
+      user: { profile: { metrics: { primary: { current: 41 } } } },
+      account: { plan: { name: 'growth' } },
+      missing: null,
+      fallback: 4,
+    },
+    iterations: 100_000,
+    expected: 51,
+    baseline(context) {
+      return (
+        context.user?.profile.metrics?.primary.current +
+        context.account?.plan.name.length +
+        (context.missing?.value ?? context.fallback)
+      )
+    },
+  },
+  {
     name: 'call-heavy',
     expression: 'sum(double(a), scale(b), math.max(c, d), lookup("key"))',
     context: {
