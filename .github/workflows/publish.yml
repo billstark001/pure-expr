@@ -2,7 +2,7 @@ name: Publish to npm
 
 on:
   release:
-    types: [ published ]
+    types: [published]
   workflow_dispatch:
     inputs:
       ref:
@@ -26,9 +26,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PNPM_VERSION: 10.33.2
+  PNPM_VERSION: 12
   NODE_VERSION: 22
-  PUBLISH_REF: ${{ github.event_name == 'release' && github.event.release.tag_name
+  PUBLISH_REF:
+    ${{ github.event_name == 'release' && github.event.release.tag_name
     || inputs.ref }}
   NPM_DIST_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag || 'latest' }}
   IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
@@ -48,7 +49,7 @@ jobs:
           ref: ${{ env.PUBLISH_REF }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
 
