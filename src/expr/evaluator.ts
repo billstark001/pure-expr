@@ -563,7 +563,10 @@ export class JSEvaluator {
   }
 
   compile(node: ExpressionNode): (context?: Readonly<Record<string, unknown>>) => unknown {
-    const execute = compileNode(node)
+    const execute =
+      this.resolvedOpts.maxSteps === undefined
+        ? createCompileRuntime({ evalArrowFunction, trackSteps: false }).compileNode(node)
+        : compileNode(node)
     return (context = EMPTY_CONTEXT) => execute(this.createState(context))
   }
 

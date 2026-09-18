@@ -46,6 +46,7 @@ import {
 
 export interface CompileRuntimeOptions {
   evalArrowFunction(node: ArrowFunctionExpression, state: EvalState): unknown
+  trackSteps?: boolean
 }
 
 export interface CompileRuntime {
@@ -62,6 +63,7 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
     node: ExpressionNode,
     execute: CompiledNodeEvaluator,
   ): CompiledNodeEvaluator {
+    if (options.trackSteps === false) return execute
     return (state) => {
       consumeStep(state, node)
       return execute(state)
