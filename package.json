@@ -73,6 +73,7 @@
     "bench:context": "pnpm run build:js && node ./scripts/bench-context-modes.mjs",
     "bench:template": "pnpm run build:js && node ./scripts/bench-template-modes.mjs",
     "bench:lexer": "pnpm run build:js && node ./scripts/bench-lexer.mjs",
+    "bench:scanner": "pnpm run build:js && node ./scripts/bench-scanner.mjs",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "check": "biome check .",
