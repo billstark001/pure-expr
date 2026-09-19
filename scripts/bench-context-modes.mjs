@@ -19,7 +19,8 @@ function measure(iterations, fn, beforeSample) {
 
   samples.sort((left, right) => left - right)
   const elapsedMs = samples[Math.floor(samples.length / 2)]
-  return { lastResult, opsPerSecond: iterations / (elapsedMs / 1000) }
+  const spreadPercent = ((samples[samples.length - 1] - samples[0]) / elapsedMs) * 100
+  return { lastResult, opsPerSecond: iterations / (elapsedMs / 1000), spreadPercent }
 }
 
 function warmup(iterations, fn) {
@@ -28,6 +29,7 @@ function warmup(iterations, fn) {
 
 function runCase(benchmarkCase) {
   const warmupIterations = Math.max(1_000, Math.floor(benchmarkCase.iterations * WARMUP_RATIO))
+  benchmarkCase.beforeSample?.()
   warmup(warmupIterations, benchmarkCase.run)
   const result = measure(benchmarkCase.iterations, benchmarkCase.run, benchmarkCase.beforeSample)
   if (!Object.is(result.lastResult, benchmarkCase.expected)) {
@@ -49,6 +51,10 @@ function formatRatio(value) {
   })
 }
 
+function formatPercent(value) {
+  return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })}%`
+}
+
 function pad(value, width) {
   return String(value).padEnd(width, ' ')
 }
@@ -59,12 +65,12 @@ function printGroup(title, cases) {
   console.log(title)
   console.log('')
   console.log(
-    `${pad('mode', NAME_WIDTH)}${pad('iterations', 12)}${pad('ops/s', 16)}${pad('vs first', 12)}`,
+    `${pad('mode', NAME_WIDTH)}${pad('iterations', 12)}${pad('ops/s', 16)}${pad('vs first', 12)}${pad('spread', 10)}`,
   )
-  console.log('-'.repeat(NAME_WIDTH + 12 + 16 + 12))
+  console.log('-'.repeat(NAME_WIDTH + 12 + 16 + 12 + 10))
   for (const row of rows) {
     console.log(
-      `${pad(row.name, NAME_WIDTH)}${pad(row.iterations.toLocaleString('en-US'), 12)}${pad(formatOps(row.opsPerSecond), 16)}${pad(`${formatRatio(row.opsPerSecond / baseline)}x`, 12)}`,
+      `${pad(row.name, NAME_WIDTH)}${pad(row.iterations.toLocaleString('en-US'), 12)}${pad(formatOps(row.opsPerSecond), 16)}${pad(`${formatRatio(row.opsPerSecond / baseline)}x`, 12)}${pad(formatPercent(row.spreadPercent), 10)}`,
     )
   }
   console.log('')

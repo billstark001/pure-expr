@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Simplified evaluator state variants and isolated arrow-runtime caches by compilation strategy.
+- Context benchmarks now report sample spread and reset mutable fixtures before warmup and measurement.
 - Public expression node types now derive from ESTree without exposing the parser's internal `start` and `end` offsets.
 - Replaced `rootContextMode` with the orthogonal `contextPolicy`; shallow snapshots now always copy own enumerable bindings regardless of the input object's prototype.
 - Compiled expressions now acquire call-time contexts on every evaluation; escaped arrows inherit that evaluation's isolation semantics.
@@ -34,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Overlay writes now remain visible across arrow-call frames for the lifetime of an evaluation.
+- Transaction commits now roll back earlier writes when a later binding-store write fails.
 - Fixed optional chains such as `obj?.a.b` and `obj?.method()` so the complete unparenthesized chain short-circuits, while parentheses correctly terminate propagation.
 - Applied property access policies consistently to property reads, method reads, tagged template receivers, and object destructuring.
 
