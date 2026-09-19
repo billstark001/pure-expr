@@ -4,6 +4,7 @@ import {
   BINARY_OPERATOR_INFO,
   LOGICAL_OPERATOR_INFO,
   UNARY_OPERATOR_INFO,
+  UPDATE_OPERATOR_INFO,
 } from '../src/expr/operators.js'
 import { compileExpression, evaluate, parseExpression } from '../src/index.js'
 
@@ -172,4 +173,86 @@ describe('operator registry contracts', () => {
       expect(compileExpression(source).evaluate(context)).toBe(expected)
     },
   )
+
+  const updateCases = [
+    ['++', true, 2, 2],
+    ['++', false, 1, 2],
+    ['--', true, 0, 0],
+    ['--', false, 1, 0],
+  ] as const
+
+  test('the update execution matrix covers the complete registry', () => {
+    expect([...new Set(updateCases.map(([operator]) => operator))].sort()).toEqual(
+      Object.keys(UPDATE_OPERATOR_INFO).sort(),
+    )
+  })
+
+  test.each(updateCases)(
+    'supports %s with prefix=%s through parse, direct, and compiled paths',
+    (operator, prefix, expected, updated) => {
+      const source = prefix ? `${operator}value` : `value${operator}`
+      expect(parseExpression(source, { allowAssignments: true })).toMatchObject({
+        type: 'UpdateExpression',
+        operator,
+        prefix,
+        argument: { type: 'Identifier', name: 'value' },
+      })
+      expect(() => parseExpression(source)).toThrow('read-only expressions')
+
+      const directContext = { value: 1 }
+      expect(evaluate(source, directContext, { writes: 'commit' })).toBe(expected)
+      expect(directContext.value).toBe(updated)
+
+      const compiledContext = { value: 1 }
+      expect(compileExpression(source, { writes: 'commit' }).evaluate(compiledContext)).toBe(
+        expected,
+      )
+      expect(compiledContext.value).toBe(updated)
+    },
+  )
+
+  test('update expressions implement ToNumeric and preserve BigInt results', () => {
+    const numericContext = { value: '41' as string | number }
+    expect(evaluate('value++', numericContext, { writes: 'commit' })).toBe(41)
+    expect(numericContext.value).toBe(42)
+
+    const bigintContext = { value: 1n }
+    expect(compileExpression('++value', { writes: 'commit' }).evaluate(bigintContext)).toBe(2n)
+    expect(bigintContext.value).toBe(2n)
+
+    const boxedBigintContext: Record<string, unknown> = { value: Object(1n) }
+    expect(evaluate('value++', boxedBigintContext, { writes: 'commit' })).toBe(1n)
+    expect(boxedBigintContext.value).toBe(2n)
+  })
+
+  test('update expression precedence matches ECMAScript', () => {
+    expect(evaluate('++value ** 2', { value: 2 }, { writes: 'overlay' })).toBe(9)
+    expect(evaluate('value++ ** 2', { value: 2 }, { writes: 'overlay' })).toBe(4)
+    expect(evaluate('-value++', { value: 2 }, { writes: 'overlay' })).toBe(-2)
+  })
+
+  test('updates lexical arrow bindings without writing the root context', () => {
+    for (const functionMode of ['default', 'performance'] as const) {
+      const context = { value: 10 }
+      expect(
+        evaluate('((value) => [value++, ++value, value])(1)', context, {
+          writes: 'overlay',
+          functionMode,
+        }),
+      ).toEqual([1, 3, 3])
+      expect(context.value).toBe(10)
+    }
+  })
+
+  test('rejects invalid update targets and postfix updates across line terminators', () => {
+    expect(() => parseExpression('++object.value', { allowAssignments: true })).toThrow(
+      'Only identifier bindings can be updated',
+    )
+    expect(() => parseExpression('(left + right)--', { allowAssignments: true })).toThrow(
+      'Only identifier bindings can be updated',
+    )
+    expect(() => parseExpression('value\n++', { allowAssignments: true })).toThrow(
+      "Unexpected token '++' after expression",
+    )
+  })
 })

@@ -28,6 +28,7 @@ import {
   applyUnaryOperator,
   assignIdentifier,
   evaluateLogicalOperator,
+  evaluateUpdateExpression,
   isAssignmentShortCircuited,
   readProperty,
   resolveIdentifier,
@@ -131,6 +132,8 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
           return assignIdentifier(node.left, value, state)
         })
       }
+      case 'UpdateExpression':
+        return withCompiledStep(node, (state) => evaluateUpdateExpression(node, state))
       case 'UnaryExpression': {
         const argument = compileNode(node.argument)
         return withCompiledStep(node, (state) => {

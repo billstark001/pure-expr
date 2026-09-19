@@ -36,6 +36,7 @@ import {
   assignIdentifier,
   compileDirectLocalIdentifier,
   evaluateLogicalOperator,
+  evaluateUpdateExpression,
   isAssignmentShortCircuited,
   readProperty,
   resolveDirectIdentifier,
@@ -142,6 +143,8 @@ export function evalNode(node: ExpressionNode, state: EvalState): unknown {
       const value = applyAssignmentOperator(node.operator, current, right)
       return assignIdentifier(node.left, value, state)
     }
+    case 'UpdateExpression':
+      return evaluateUpdateExpression(node, state)
     case 'UnaryExpression':
       return evalUnary(node, state)
     case 'AwaitExpression':

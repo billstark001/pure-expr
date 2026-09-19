@@ -1,4 +1,10 @@
-import type { AssignmentOperator, BinaryOperator, LogicalOperator, UnaryOperator } from 'estree'
+import type {
+  AssignmentOperator,
+  BinaryOperator,
+  LogicalOperator,
+  UnaryOperator,
+  UpdateOperator,
+} from 'estree'
 
 export const PREC = {
   COMMA: 1,
@@ -21,6 +27,7 @@ export const PREC = {
 } as const
 
 export type SupportedUnaryOperator = Exclude<UnaryOperator, 'delete'>
+export type SupportedUpdateOperator = UpdateOperator
 export type SupportedAssignmentOperator = AssignmentOperator
 export type SupportedBinaryOperator = BinaryOperator
 export type SupportedLogicalOperator = LogicalOperator
@@ -94,6 +101,11 @@ export const UNARY_OPERATOR_INFO = Object.freeze({
   void: { syntax: 'keyword' },
 } satisfies Record<SupportedUnaryOperator, { readonly syntax: 'keyword' | 'symbol' }>)
 
+export const UPDATE_OPERATOR_INFO = Object.freeze({
+  '++': {},
+  '--': {},
+} satisfies Record<SupportedUpdateOperator, object>)
+
 function hasOwn(record: object, value: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, value)
 }
@@ -140,6 +152,10 @@ export function isUnarySymbolOperator(
   )
 }
 
+export function isUpdateOperator(value: string): value is SupportedUpdateOperator {
+  return hasOwn(UPDATE_OPERATOR_INFO, value)
+}
+
 export function getInfixOperatorInfo(value: string): InfixOperatorInfo | undefined {
   if (isBinaryOperator(value)) return BINARY_OPERATOR_INFO[value]
   if (isLogicalOperator(value)) return LOGICAL_OPERATOR_INFO[value]
@@ -148,8 +164,6 @@ export function getInfixOperatorInfo(value: string): InfixOperatorInfo | undefin
 
 const STRUCTURAL_PUNCTUATORS = [
   '...',
-  '++',
-  '--',
   '|>',
   '?.',
   '=>',
@@ -178,6 +192,7 @@ export const LEXICAL_PUNCTUATORS: readonly string[] = Object.freeze(
       ...Object.keys(LOGICAL_OPERATOR_INFO),
       ...Object.keys(ASSIGNMENT_OPERATOR_INFO),
       ...SYMBOLIC_UNARY_OPERATORS,
+      ...Object.keys(UPDATE_OPERATOR_INFO),
       ...STRUCTURAL_PUNCTUATORS,
     ]),
   ].sort((left, right) => right.length - left.length || left.localeCompare(right)),

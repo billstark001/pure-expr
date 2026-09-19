@@ -9,6 +9,7 @@ import {
   isLogicalOperator,
   isUnaryKeywordOperator,
   isUnarySymbolOperator,
+  isUpdateOperator,
   PREC,
 } from './operators.js'
 import {
@@ -35,6 +36,7 @@ import type {
   TemplateLiteral,
   TopicReference,
   UnaryExpression,
+  UpdateExpression,
 } from './parser/node-types.js'
 import { parseStringValue } from './parser/shared.js'
 import { buildTemplateAstNode } from './parser/template.js'
@@ -220,6 +222,31 @@ export class JSExpressionParser {
         this.advance()
         const args = this.parseArgList()
         left = this.appendCall(left, args, false, this.lastEnd())
+        continue
+      }
+
+      // Update expressions bind after member/call access but before infix operators.
+      if (t.kind === 'op' && isUpdateOperator(t.value) && PREC.POSTFIX >= minPrec) {
+        if (!this.opts.allowAssignments) {
+          throw new JSParseError(
+            `Update operator '${t.value}' is not allowed in read-only expressions`,
+            t,
+            this.src,
+          )
+        }
+        if (this.hasLineTerminatorBetween(left.end, t.start)) break
+        if (left.type !== 'Identifier') {
+          throw new JSParseError('Only identifier bindings can be updated', t, this.src)
+        }
+        this.advance()
+        left = {
+          type: 'UpdateExpression',
+          operator: t.value,
+          argument: left,
+          prefix: false,
+          start: left.start,
+          end: t.end,
+        } satisfies UpdateExpression
         continue
       }
 
@@ -531,9 +558,28 @@ export class JSExpressionParser {
         } satisfies UnaryExpression
       }
 
-      // Forbidden prefix operators
-      if (t.value === '++' || t.value === '--')
-        throw new JSParseError(`'${t.value}' is not allowed in read-only expressions`, t, this.src)
+      if (isUpdateOperator(t.value)) {
+        if (!this.opts.allowAssignments) {
+          throw new JSParseError(
+            `Update operator '${t.value}' is not allowed in read-only expressions`,
+            t,
+            this.src,
+          )
+        }
+        this.advance()
+        const argument = this.parseExpr(PREC.UNARY)
+        if (argument.type !== 'Identifier') {
+          throw new JSParseError('Only identifier bindings can be updated', t, this.src)
+        }
+        return {
+          type: 'UpdateExpression',
+          operator: t.value,
+          argument,
+          prefix: true,
+          start: t.start,
+          end: this.lastEnd(),
+        } satisfies UpdateExpression
+      }
 
       // Grouping expression
       if (t.value === '(') {

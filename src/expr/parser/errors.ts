@@ -16,7 +16,7 @@ export interface JSParserOptions {
   locations?: boolean | JSLocationOptions
   allowAwait?: boolean
   allowArrowFunctions?: boolean
-  /** Enable identifier assignment expressions. Evaluation still requires a write policy. */
+  /** Enable identifier assignment and update expressions. Evaluation still requires a write policy. */
   allowAssignments?: boolean
   allowIn?: boolean
   allowRegexLiterals?: boolean

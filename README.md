@@ -94,7 +94,7 @@ Useful expression options:
 
 - allowAwait: enable parsing of await expressions in sync mode
 - allowArrowFunctions: enable or disable concise-body arrow functions
-- allowAssignments: enable parsing restricted identifier assignments; evaluation normally enables this automatically when `writes` is not `deny`
+- allowAssignments: enable parsing restricted identifier assignments and update expressions; evaluation normally enables this automatically when `writes` is not `deny`
 - allowIn: enable the in operator
 - allowCalls: disable all calls, tagged templates, pipeline-internal calls, and arrow-function invocations when set to false
 - allowRegexLiterals: disable regex literals when set to false
@@ -172,7 +172,7 @@ pending.commit(); // storyVariables.score is now 3
 
 Transaction commits restore earlier writes if a later `BindingStore.set` fails. Custom stores that can apply a batch atomically should implement the optional `applyChanges(changes)` method; `createBindingStore` provides it automatically.
 
-Only identifier bindings are assignable; member assignment such as `object.value = 1`, update operators, and `delete` remain unsupported. Lexical arrow parameters can be reassigned without writing the root context. Template rendering supports `deny`, `overlay`, and `commit`; transaction mode is rejected because placeholders are evaluated separately.
+Only identifier bindings are writable. This includes assignment and prefix/postfix update expressions such as `score++` and `--score`; member writes such as `object.value = 1` or `object.value++` and `delete` remain unsupported. Lexical arrow parameters can be reassigned or updated without writing the root context. Template rendering supports `deny`, `overlay`, and `commit`; transaction mode is rejected because placeholders are evaluated separately.
 
 Compatibility example:
 
@@ -273,7 +273,7 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 ## Notes And Limits
 
 - The package ships ESM and CommonJS entrypoints. Its emitted syntax targets ES2015 for bundlers and downstream transpilers, but runtime features such as bigint and newer built-ins still depend on the host.
-- Expressions are read-only by default. Setting `writes` enables identifier assignment expressions; statements, member assignment, `delete`, and update operators remain rejected.
+- Expressions are read-only by default. Setting `writes` enables identifier assignment and update expressions; statements, member writes, `new`, and `delete` remain rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
 - Arrow functions are concise-body only. `this`, `arguments`, `super`, and `new.target` are rejected, and `function` / class definitions remain unsupported.
 - Root evaluation contexts must be plain objects or null-prototype objects by default. Set `contextPolicy.input` to `own-properties` or `allow` for explicit non-plain inputs, and choose `shallow-snapshot` when own enumerable bindings should always be copied.

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Added ECMAScript prefix and postfix update expressions (`++` and `--`) for writable identifier bindings, including Number and BigInt semantics.
 - Added optional ESTree `loc` generation with configurable starting line, starting column, and source name.
 - Added layered evaluation environments for separately isolated data, host capabilities, and mutable `BindingStore` variables.
 - Added explicit reference, shallow-snapshot, and deep-snapshot context isolation with safe shallow/deep freezing.

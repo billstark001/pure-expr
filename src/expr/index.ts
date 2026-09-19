@@ -83,6 +83,7 @@ export type {
   TemplateLiteral,
   TopicReference,
   UnaryExpression,
+  UpdateExpression,
 } from './node-types.js'
 export {
   JSExpressionParser,
@@ -178,6 +179,9 @@ function validateAstBudget(ast: ExpressionNode, options: JSParserOptions): void 
       case 'AssignmentExpression':
         visit(node.left, depth + 1)
         visit(node.right, depth + 1)
+        return
+      case 'UpdateExpression':
+        visit(node.argument, depth + 1)
         return
       case 'UnaryExpression':
       case 'AwaitExpression':

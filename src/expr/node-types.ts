@@ -25,6 +25,7 @@ import type {
   TemplateElement as ESTreeTemplateElement,
   TemplateLiteral as ESTreeTemplateLiteral,
   UnaryExpression as ESTreeUnaryExpression,
+  UpdateExpression as ESTreeUpdateExpression,
 } from 'estree'
 import type { SupportedUnaryOperator } from './operators.js'
 
@@ -42,6 +43,11 @@ export interface TopicReference extends BaseNode {
 export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument' | 'operator'> {
   argument: ExpressionNode
   operator: SupportedUnaryOperator
+}
+
+/** Restricted update expression: only identifier bindings are writable. */
+export interface UpdateExpression extends Omit<ESTreeUpdateExpression, 'argument'> {
+  argument: Identifier
 }
 
 export interface AwaitExpression extends Omit<ESTreeAwaitExpression, 'argument'> {
@@ -178,6 +184,7 @@ export type ExpressionNode =
   | TopicReference
   | ArrowFunctionExpression
   | AssignmentExpression
+  | UpdateExpression
   | UnaryExpression
   | AwaitExpression
   | BinaryExpression

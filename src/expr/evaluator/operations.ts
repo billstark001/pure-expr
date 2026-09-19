@@ -4,6 +4,7 @@ import type {
   Identifier,
   LogicalExpression,
   UnaryExpression,
+  UpdateExpression,
 } from '../node-types.js'
 import { isLogicalAssignmentOperator, type SupportedAssignmentOperator } from '../operators.js'
 import { assignScopeBinding, resolveScopeBinding } from './context.js'
@@ -185,6 +186,24 @@ export function applyAssignmentOperator(
     default:
       return assertUnknownOperator('assignment', operator)
   }
+}
+
+export function evaluateUpdateExpression(
+  node: UpdateExpression,
+  state: EvalState,
+): number | bigint {
+  // ECMAScript update expressions use ToNumeric, which preserves BigInt while
+  // correctly handling objects whose primitive conversion produces a BigInt.
+  let updated = resolveIdentifier(node.argument, state) as any
+  const result = node.prefix
+    ? node.operator === '++'
+      ? ++updated
+      : --updated
+    : node.operator === '++'
+      ? updated++
+      : updated--
+  assignIdentifier(node.argument, updated, state)
+  return result
 }
 
 export function assertPropertyAllowed(

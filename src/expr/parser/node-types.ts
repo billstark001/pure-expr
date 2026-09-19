@@ -26,6 +26,7 @@ import type {
   TemplateLiteral as PublicTemplateLiteral,
   TopicReference as PublicTopicReference,
   UnaryExpression as PublicUnaryExpression,
+  UpdateExpression as PublicUpdateExpression,
 } from '../node-types.js'
 
 /** Parser-only offsets used to build and validate the public ESTree tree. */
@@ -40,6 +41,10 @@ export interface TopicReference extends PublicTopicReference, SourceOffsets {}
 
 export interface UnaryExpression extends Omit<PublicUnaryExpression, 'argument'>, SourceOffsets {
   argument: ExpressionNode
+}
+
+export interface UpdateExpression extends Omit<PublicUpdateExpression, 'argument'>, SourceOffsets {
+  argument: Identifier
 }
 
 export interface AwaitExpression extends Omit<PublicAwaitExpression, 'argument'>, SourceOffsets {
@@ -187,6 +192,7 @@ export type ExpressionNode =
   | TopicReference
   | ArrowFunctionExpression
   | AssignmentExpression
+  | UpdateExpression
   | UnaryExpression
   | AwaitExpression
   | BinaryExpression

@@ -156,6 +156,12 @@ describe('mutable binding stores', () => {
     expect(context.score).toBe(1)
   })
 
+  test('overlay update expressions are visible and then discarded', () => {
+    const context = { score: 1 }
+    expect(evaluate('score++, score', context, { writes: 'overlay' })).toBe(2)
+    expect(context.score).toBe(1)
+  })
+
   test.each(['default', 'performance'] as const)(
     '%s overlay writes cross arrow call frames within one evaluation',
     (functionMode) => {
@@ -244,6 +250,17 @@ describe('mutable binding stores', () => {
     expect(transaction.status).toBe('committed')
     expect(context).toEqual({ score: 3, bonus: 4 })
     expect(context).not.toHaveProperty('injected')
+  })
+
+  test('transactions stage update expressions', () => {
+    const context = { score: 1 }
+    const transaction = evaluate('score++, ++score', context, { writes: 'transaction' })
+
+    expect(transaction.value).toBe(3)
+    expect([...transaction.changes]).toEqual([['score', 3]])
+    expect(context.score).toBe(1)
+    transaction.commit()
+    expect(context.score).toBe(3)
   })
 
   test('failed transaction commits restore changes already written to a binding store', () => {
