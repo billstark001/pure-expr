@@ -1,77 +1,3 @@
-import { defaultCallPermissionPolicy } from './call-permission.js'
-import {
-  bindArrowParameters,
-  bindCompiledArrowParameters,
-  collectArrowBoundNames,
-  createPureExprArrowFunction,
-  getArrowExpectedArgumentCount,
-} from './evaluator/arrows.js'
-import {
-  appendIterableValues,
-  ensureCallAllowed,
-  safeCall,
-  safeCall0,
-  safeCall1,
-  safeCall2,
-  safeCall3,
-  safeCall4,
-} from './evaluator/calls.js'
-import { createCompileRuntime } from './evaluator/compile.js'
-import {
-  completeEvaluation,
-  copySpreadProperties,
-  createChildScope,
-  createNullPrototypeRecord,
-  createObjectLiteralResult,
-  createRootScope,
-  createRuntimeEnvironment,
-  getObjectLiteralMode,
-  isEvaluationEnvironment,
-  prepareReferenceContext,
-} from './evaluator/context.js'
-import {
-  applyAssignmentOperator,
-  applyBinaryOperator,
-  applyUnaryOperator,
-  applyUpdateOperator,
-  assertMemberWriteAllowed,
-  assertPropertyAllowed,
-  assertWritableMemberReference,
-  assignIdentifier,
-  compileDirectLocalIdentifier,
-  evaluateLogicalOperator,
-  isAssignmentShortCircuited,
-  readProperty,
-  resolveDirectIdentifier,
-  resolveDirectLocalIdentifier,
-  resolveIdentifier,
-  writeProperty,
-} from './evaluator/operations.js'
-import { BLOCKED_PROPS } from './evaluator/security.js'
-import {
-  consumeStep,
-  createDirectEvalState,
-  createDirectLocalEvalState,
-  createScopedEvalState,
-  ensureEvalScope,
-} from './evaluator/state.js'
-import { getTaggedTemplateObject } from './evaluator/templates.js'
-import {
-  type ContextInputMode,
-  DEFAULT_CONTEXT_POLICY,
-  DEFAULT_CONTEXT_WRITE_MODE,
-  DEFAULT_OBJECT_LITERAL_MODE,
-  EMPTY_CONTEXT,
-  EMPTY_OPTS,
-  type EvalState,
-  type EvaluationEnvironment,
-  type EvaluationInput,
-  type EvaluationScope,
-  type JSCallable,
-  JSEvalError,
-  type JSEvalOptions,
-  UNINITIALIZED_ARROW_PARAM,
-} from './evaluator/types.js'
 import type {
   ArrowFunctionExpression,
   AssignmentExpression,
@@ -87,34 +13,64 @@ import type {
   TemplateLiteral,
   UnaryExpression,
   UpdateExpression,
-} from './node-types.js'
-
-export { createBindingStore, createEvaluationEnvironment } from './evaluator/context.js'
-export { inheritedPropertyAccess, ownPropertyAccess } from './evaluator/operations.js'
-export {
-  allowAllCalls,
-  type BindingStore,
-  type ContextFreeze,
-  type ContextInputMode,
-  type ContextIsolation,
-  type ContextPolicy,
-  type ContextWriteMode,
-  type EvaluationEnvironment,
-  type EvaluationEnvironmentInit,
-  type EvaluationInput,
-  type EvaluationTransactionResult,
-  type FunctionMode,
-  type JSCallKind,
-  type JSCallPermissionContext,
-  type JSCallPermissionPolicy,
+} from '../node-types.js'
+import {
+  bindArrowParameters,
+  bindCompiledArrowParameters,
+  collectArrowBoundNames,
+  createPureExprArrowFunction,
+  getArrowExpectedArgumentCount,
+} from './arrows.js'
+import {
+  appendIterableValues,
+  ensureCallAllowed,
+  safeCall,
+  safeCall0,
+  safeCall1,
+  safeCall2,
+  safeCall3,
+  safeCall4,
+} from './calls.js'
+import { createCompileRuntime } from './compile.js'
+import {
+  copySpreadProperties,
+  createChildScope,
+  createNullPrototypeRecord,
+  createObjectLiteralResult,
+  getObjectLiteralMode,
+} from './context.js'
+import {
+  applyAssignmentOperator,
+  applyBinaryOperator,
+  applyUnaryOperator,
+  applyUpdateOperator,
+  assertMemberWriteAllowed,
+  assertPropertyAllowed,
+  assertWritableMemberReference,
+  assignIdentifier,
+  compileDirectLocalIdentifier,
+  evaluateLogicalOperator,
+  isAssignmentShortCircuited,
+  readProperty,
+  resolveDirectLocalIdentifier,
+  resolveIdentifier,
+  writeProperty,
+} from './operations.js'
+import { BLOCKED_PROPS } from './security.js'
+import {
+  consumeStep,
+  createDirectLocalEvalState,
+  createScopedEvalState,
+  ensureEvalScope,
+} from './state.js'
+import { getTaggedTemplateObject } from './templates.js'
+import {
+  type EvalState,
+  type EvaluationScope,
+  type JSCallable,
   JSEvalError,
-  type JSEvalOptions,
-  type ObjectLiteralMode,
-  type PropertyAccessContext,
-  type PropertyAccessKind,
-  type PropertyAccessPolicy,
-  type TaggedTemplateArrayMode,
-} from './evaluator/types.js'
+  UNINITIALIZED_ARROW_PARAM,
+} from './types.js'
 
 const CHAIN_SHORT_CIRCUIT = Symbol('pure-expr.chain-short-circuit')
 
@@ -226,7 +182,7 @@ export function evalNode(node: ExpressionNode, state: EvalState): unknown {
   }
 }
 
-function evalArrowFunction(node: ArrowFunctionExpression, state: EvalState): unknown {
+export function evalArrowFunction(node: ArrowFunctionExpression, state: EvalState): unknown {
   return state.opts.functionMode === 'performance'
     ? evalArrowFunctionPerformance(node, state)
     : evalArrowFunctionDefault(node, state)
@@ -306,7 +262,7 @@ function createArrowLocals(names: readonly string[]): Record<string, unknown> {
   return locals
 }
 
-const { compileNode, getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
+const { getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
 const directLocalArrowBodyCache = new WeakMap<
   ArrowFunctionExpression,
   (state: EvalState) => unknown
@@ -663,131 +619,4 @@ function evalTemplateLiteral(node: TemplateLiteral, state: EvalState): string {
     if (index < node.expressions.length) result += String(evalNode(node.expressions[index], state))
   }
   return result
-}
-
-export class JSEvaluator {
-  private readonly context: EvaluationInput
-  private directEnvironmentCache?: WeakMap<EvaluationEnvironment, Readonly<Record<string, unknown>>>
-  private readonly directInputMode: ContextInputMode
-  private readonly useDirectContext: boolean
-  private readonly resolvedOpts: Readonly<JSEvalOptions>
-
-  constructor(context: EvaluationInput = EMPTY_CONTEXT, opts: JSEvalOptions = EMPTY_OPTS) {
-    this.resolvedOpts = {
-      ...opts,
-      functionMode: opts.functionMode ?? 'default',
-      contextPolicy: opts.contextPolicy
-        ? Object.freeze({ ...opts.contextPolicy })
-        : DEFAULT_CONTEXT_POLICY,
-      writes: opts.writes ?? DEFAULT_CONTEXT_WRITE_MODE,
-      objectLiteralMode: opts.objectLiteralMode ?? DEFAULT_OBJECT_LITERAL_MODE,
-      isCallableAllowed: opts.isCallableAllowed ?? defaultCallPermissionPolicy,
-    }
-    this.context = context
-    const policy = this.resolvedOpts.contextPolicy!
-    this.directInputMode = policy.input ?? 'plain-only'
-    this.useDirectContext =
-      (policy.isolation ?? 'reference') === 'reference' &&
-      (policy.freeze ?? 'none') === 'none' &&
-      this.resolvedOpts.writes === 'deny'
-  }
-
-  evaluate(node: ExpressionNode, context: EvaluationInput = EMPTY_CONTEXT): unknown {
-    const directContext = this.createDirectContext(context)
-    if (directContext) {
-      return evalNode(node, createDirectEvalState(directContext, this.resolvedOpts))
-    }
-    const environment = this.createEnvironment(context)
-    return completeEvaluation(
-      evalNode(node, createScopedEvalState(createRootScope(environment), this.resolvedOpts)),
-      environment,
-    )
-  }
-
-  compile(node: ExpressionNode): (context?: EvaluationInput) => unknown {
-    const trackSteps = this.resolvedOpts.maxSteps !== undefined
-    const directExecute = this.useDirectContext
-      ? createCompileRuntime({
-          evalArrowFunction,
-          resolveIdentifier: resolveDirectIdentifier,
-          trackSteps,
-        }).compileNode(node)
-      : undefined
-    const compileGeneral = () =>
-      trackSteps
-        ? compileNode(node)
-        : createCompileRuntime({ evalArrowFunction, trackSteps: false }).compileNode(node)
-    let execute = directExecute ? undefined : compileGeneral()
-    return (context = EMPTY_CONTEXT) => {
-      const directContext = this.createDirectContext(context)
-      if (directContext) {
-        return directExecute!(createDirectEvalState(directContext, this.resolvedOpts))
-      }
-      const environment = this.createEnvironment(context)
-      execute ??= compileGeneral()
-      return completeEvaluation(
-        execute(createScopedEvalState(createRootScope(environment), this.resolvedOpts)),
-        environment,
-      )
-    }
-  }
-
-  private createDirectContext(
-    context: EvaluationInput,
-  ): Readonly<Record<string, unknown>> | undefined {
-    if (!this.useDirectContext) return undefined
-    const input =
-      context === EMPTY_CONTEXT
-        ? this.context
-        : this.context === EMPTY_CONTEXT
-          ? context
-          : undefined
-    if (!input) return undefined
-    if (this.directInputMode === 'plain-only') {
-      const prototype = Object.getPrototypeOf(input)
-      if (prototype === Object.prototype || prototype === null) {
-        return input as Readonly<Record<string, unknown>>
-      }
-      if (isEvaluationEnvironment(input)) return this.createDirectEnvironmentContext(input)
-    } else if (isEvaluationEnvironment(input)) {
-      return this.createDirectEnvironmentContext(input)
-    }
-    return prepareReferenceContext(input, this.directInputMode, 'Evaluation context')
-  }
-
-  private createDirectEnvironmentContext(
-    environment: EvaluationEnvironment,
-  ): Readonly<Record<string, unknown>> | undefined {
-    const cached = this.directEnvironmentCache?.get(environment)
-    if (cached) return cached
-    if (environment.variables) return undefined
-    const hasData = environment.data !== undefined
-    const hasCapabilities = environment.capabilities !== undefined
-    if (hasData === hasCapabilities) return undefined
-
-    const value = hasData ? environment.data! : environment.capabilities!
-    const policy = hasData
-      ? (environment.dataPolicy ?? this.resolvedOpts.contextPolicy!)
-      : (environment.capabilitiesPolicy ?? {
-          input: 'allow' as const,
-          isolation: 'reference' as const,
-          freeze: 'none' as const,
-        })
-    if ((policy.isolation ?? 'reference') !== 'reference' || (policy.freeze ?? 'none') !== 'none') {
-      return undefined
-    }
-    const prepared = prepareReferenceContext(
-      value,
-      policy.input ?? (hasData ? this.directInputMode : 'allow'),
-      'Evaluation context',
-    )
-    if (!this.directEnvironmentCache) this.directEnvironmentCache = new WeakMap()
-    this.directEnvironmentCache.set(environment, prepared)
-    return prepared
-  }
-
-  private createEnvironment(context: EvaluationInput) {
-    const inputs = context === EMPTY_CONTEXT ? [this.context] : [this.context, context]
-    return createRuntimeEnvironment(inputs, this.resolvedOpts)
-  }
 }

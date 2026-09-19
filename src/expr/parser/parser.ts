@@ -1,8 +1,8 @@
-import type { JSToken, JSTokenKind } from './lexer/index.js'
+import type { JSToken, JSTokenKind } from '../lexer/index.js'
 import type {
   BindingPattern as PublicBindingPattern,
   ExpressionNode as PublicExpressionNode,
-} from './node-types.js'
+} from '../node-types.js'
 import {
   BINARY_OPERATOR_INFO,
   getInfixOperatorInfo,
@@ -14,20 +14,21 @@ import {
   isUnarySymbolOperator,
   isUpdateOperator,
   PREC,
-} from './operators.js'
+} from '../operators.js'
 import {
   isArrowFunctionStart as detectArrowFunctionStart,
   type ParserBindingDelegate,
   parseArrowFunction as parseArrowFunctionWithBindings,
   parseBindingPattern as parseBindingPatternWithDelegate,
-} from './parser/bindings.js'
+} from './bindings.js'
 import {
-  JSIncompleteParseError,
-  type JSLocationOptions,
-  JSParseError,
-  type JSParserOptions,
-} from './parser/errors.js'
-import { FORBIDDEN_PREFIX_IDENTIFIERS } from './parser/grammar.js'
+  type CollectionParserDelegate,
+  parseArrayLiteral,
+  parseObjectLiteral,
+} from './collections.js'
+import { JSIncompleteParseError, JSParseError, type JSParserOptions } from './errors.js'
+import { finalizeAst } from './finalize.js'
+import { FORBIDDEN_PREFIX_IDENTIFIERS } from './grammar.js'
 import type {
   ArrowFunctionExpression,
   BinaryExpression,
@@ -40,7 +41,6 @@ import type {
   LogicalExpression,
   MemberExpression,
   PipelineExpression,
-  Property,
   SequenceExpression,
   SpreadElement,
   TaggedTemplateExpression,
@@ -48,17 +48,14 @@ import type {
   TopicReference,
   UnaryExpression,
   UpdateExpression,
-} from './parser/node-types.js'
-import { parseStringValue, propertyKeyFromToken } from './parser/shared.js'
-import { buildTemplateAstNode } from './parser/template.js'
+} from './node-types.js'
+import { parseStringValue } from './shared.js'
+import { buildTemplateAstNode } from './template.js'
 import {
   assertValidLogicalMixing,
   validateBindingTopicUsage,
   validateTopicUsage,
-} from './parser/validation.js'
-
-export type { JSLocationOptions, JSParserOptions } from './parser/errors.js'
-export { JSIncompleteParseError, JSParseError } from './parser/errors.js'
+} from './validation.js'
 
 export interface JSExpressionPrefixResult {
   expression: PublicExpressionNode
@@ -741,128 +738,12 @@ export class JSExpressionParser {
 
       // Array literal
       if (t.value === '[') {
-        this.advance()
-        const elements: Array<ExpressionNode | SpreadElement | null> = []
-        while (this.peek()?.value !== ']') {
-          if (!this.peek()) {
-            throw new JSIncompleteParseError('Unterminated array literal', t, this.src)
-          }
-          if (this.peek()!.value === ',') {
-            this.advance()
-            elements.push(null) // hole
-            continue
-          }
-          if (this.peek()!.value === '...') {
-            const spread = this.advance()!
-            elements.push({
-              type: 'SpreadElement',
-              argument: this.parseAssignmentExpr(),
-              start: spread.start,
-              end: this.lastEnd(),
-            })
-          } else {
-            elements.push(this.parseAssignmentExpr())
-          }
-          if (this.peek()?.value === ',') this.advance()
-          else break
-        }
-        this.expectOp(']', 'Unterminated array literal, expected ]')
-        return { type: 'ArrayExpression', elements, start: t.start, end: this.lastEnd() }
+        return parseArrayLiteral(this.createCollectionDelegate(), t)
       }
 
       // Object literal
       if (t.value === '{') {
-        this.advance()
-        const properties: Array<Property | SpreadElement> = []
-        while (this.peek()?.value !== '}') {
-          if (!this.peek()) {
-            throw new JSIncompleteParseError('Unterminated object literal', t, this.src)
-          }
-
-          // Spread property
-          if (this.peek()!.value === '...') {
-            const spread = this.advance()!
-            properties.push({
-              type: 'SpreadElement',
-              argument: this.parseAssignmentExpr(),
-              start: spread.start,
-              end: this.lastEnd(),
-            })
-            if (this.peek()?.value === ',') this.advance()
-            continue
-          }
-
-          // Computed key: [expr]: value
-          if (this.peek()!.value === '[') {
-            const lb = this.advance()!
-            const key = this.parseSequenceExpr()
-            this.expectOp(']')
-            this.expectOp(':', 'Expected : after computed object key')
-            const value = this.parseAssignmentExpr()
-            properties.push({
-              type: 'Property',
-              key,
-              value,
-              kind: 'init',
-              method: false,
-              computed: true,
-              shorthand: false,
-              start: lb.start,
-              end: this.lastEnd(),
-            })
-          } else {
-            // Regular or shorthand key
-            const keyTok = this.advance()!
-            if (!keyTok) {
-              throw new JSIncompleteParseError('Expected property key', undefined, this.src)
-            }
-            const key = propertyKeyFromToken(keyTok)
-
-            if (this.peek()?.value === ':') {
-              this.advance()
-              const value = this.parseAssignmentExpr()
-              properties.push({
-                type: 'Property',
-                key,
-                value,
-                kind: 'init',
-                method: false,
-                computed: false,
-                shorthand: false,
-                start: keyTok.start,
-                end: this.lastEnd(),
-              })
-            } else {
-              // shorthand {x} — only valid for identifiers
-              if (keyTok.kind !== 'identifier')
-                throw new JSParseError(
-                  `Expected ':' after object key '${keyTok.value}'`,
-                  keyTok,
-                  this.src,
-                )
-              properties.push({
-                type: 'Property',
-                key,
-                value: {
-                  type: 'Identifier',
-                  name: keyTok.value,
-                  start: keyTok.start,
-                  end: keyTok.end,
-                },
-                kind: 'init',
-                method: false,
-                computed: false,
-                shorthand: true,
-                start: keyTok.start,
-                end: keyTok.end,
-              })
-            }
-          }
-          if (this.peek()?.value === ',') this.advance()
-          else break
-        }
-        this.expectOp('}', 'Unterminated object literal, expected }')
-        return { type: 'ObjectExpression', properties, start: t.start, end: this.lastEnd() }
+        return parseObjectLiteral(this.createCollectionDelegate(), t)
       }
     }
 
@@ -894,6 +775,18 @@ export class JSExpressionParser {
   // #endregion
 
   // #region Arrow parsing
+
+  private createCollectionDelegate(): CollectionParserDelegate {
+    return {
+      src: this.src,
+      peek: (offset = 0) => this.peek(offset),
+      advance: () => this.advance(),
+      lastEnd: () => this.lastEnd(),
+      expectOp: (raw, message) => this.expectOp(raw, message),
+      parseAssignmentExpr: () => this.parseAssignmentExpr(),
+      parseSequenceExpr: () => this.parseSequenceExpr(),
+    }
+  }
 
   private createBindingDelegate(): ParserBindingDelegate {
     return {
@@ -1001,91 +894,6 @@ export class JSExpressionParser {
   }
 
   // #endregion
-}
-
-function finalizeAst(
-  ast: ExpressionNode,
-  source: string,
-  locations: JSParserOptions['locations'],
-): PublicExpressionNode
-function finalizeAst(
-  ast: InternalBindingPattern,
-  source: string,
-  locations: JSParserOptions['locations'],
-): PublicBindingPattern
-function finalizeAst(
-  ast: ExpressionNode | InternalBindingPattern,
-  source: string,
-  locations: JSParserOptions['locations'],
-): PublicExpressionNode | PublicBindingPattern {
-  const locationResolver = locations ? createLocationResolver(source, locations) : undefined
-
-  const visit = (node: ExpressionNode | InternalBindingPattern): Record<string, unknown> => {
-    const result: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(node)) {
-      if (key === 'start' || key === 'end') continue
-      if (Array.isArray(value)) {
-        result[key] = value.map((item) => (isInternalNode(item) ? visit(item) : item))
-      } else {
-        result[key] = isInternalNode(value) ? visit(value) : value
-      }
-    }
-    if (locationResolver) result.loc = locationResolver(node.start, node.end)
-    return result
-  }
-
-  return visit(ast) as unknown as PublicExpressionNode | PublicBindingPattern
-}
-
-function isInternalNode(value: unknown): value is ExpressionNode | InternalBindingPattern {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === 'string' &&
-    typeof (value as { start?: unknown }).start === 'number' &&
-    typeof (value as { end?: unknown }).end === 'number'
-  )
-}
-
-function createLocationResolver(source: string, options: true | JSLocationOptions) {
-  const startLine = options === true ? 1 : (options.startLine ?? 1)
-  const startColumn = options === true ? 0 : (options.startColumn ?? 0)
-  const sourceName = options === true ? undefined : options.source
-  if (!Number.isInteger(startLine) || startLine < 1) {
-    throw new TypeError('locations.startLine must be an integer greater than or equal to 1')
-  }
-  if (!Number.isInteger(startColumn) || startColumn < 0) {
-    throw new TypeError('locations.startColumn must be a non-negative integer')
-  }
-  const lineStarts = [0]
-
-  for (let index = 0; index < source.length; index += 1) {
-    const code = source.charCodeAt(index)
-    if (code === 13 && source.charCodeAt(index + 1) === 10) index += 1
-    if (code === 10 || code === 13 || code === 0x2028 || code === 0x2029) {
-      lineStarts.push(index + 1)
-    }
-  }
-
-  const positionAt = (offset: number) => {
-    let low = 0
-    let high = lineStarts.length
-    while (low + 1 < high) {
-      const middle = (low + high) >>> 1
-      if (lineStarts[middle] <= offset) low = middle
-      else high = middle
-    }
-    return {
-      line: startLine + low,
-      column: offset - lineStarts[low] + (low === 0 ? startColumn : 0),
-    }
-  }
-
-  return (start: number, end: number) => ({
-    ...(sourceName !== undefined ? { source: sourceName } : {}),
-    start: positionAt(start),
-    end: positionAt(end),
-  })
 }
 
 // #endregion

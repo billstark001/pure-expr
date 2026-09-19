@@ -1,17 +1,21 @@
-import {
-  type EvaluationInput,
-  type EvaluationTransactionResult,
-  type JSEvalOptions,
-  JSEvaluator,
-} from './evaluator.js'
+import { JSEvaluator } from './evaluator/runner.js'
+import type {
+  EvaluationInput,
+  EvaluationTransactionResult,
+  JSEvalOptions,
+} from './evaluator/types.js'
 import { JSLexer, type JSToken } from './lexer/index.js'
 import type { BindingPattern, ExpressionNode } from './node-types.js'
+import { JSParseError, type JSParserOptions } from './parser/errors.js'
+import { JSExpressionParser } from './parser/parser.js'
 import { collectScanTokens, type JSScanOptions, type JSScanStopReason } from './parser/scanner.js'
-import { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
 
 export interface EvalOptions extends JSParserOptions, JSEvalOptions {}
 
 export { defaultCallPermissionPolicy } from './call-permission.js'
+export { createBindingStore, createEvaluationEnvironment } from './evaluator/context.js'
+export { inheritedPropertyAccess, ownPropertyAccess } from './evaluator/operations.js'
+export { JSEvaluator } from './evaluator/runner.js'
 export {
   allowAllCalls,
   type BindingStore,
@@ -20,27 +24,22 @@ export {
   type ContextIsolation,
   type ContextPolicy,
   type ContextWriteMode,
-  createBindingStore,
-  createEvaluationEnvironment,
   type EvaluationEnvironment,
   type EvaluationEnvironmentInit,
   type EvaluationInput,
   type EvaluationTransactionResult,
   type FunctionMode,
-  inheritedPropertyAccess,
   type JSCallKind,
   type JSCallPermissionContext,
   type JSCallPermissionPolicy,
   JSEvalError,
   type JSEvalOptions,
-  JSEvaluator,
   type ObjectLiteralMode,
-  ownPropertyAccess,
   type PropertyAccessContext,
   type PropertyAccessKind,
   type PropertyAccessPolicy,
   type TaggedTemplateArrayMode,
-} from './evaluator.js'
+} from './evaluator/types.js'
 export {
   cookTemplate,
   JSLexError,
@@ -87,6 +86,17 @@ export type {
   UnaryExpression,
   UpdateExpression,
 } from './node-types.js'
+export {
+  JSIncompleteParseError,
+  type JSLocationOptions,
+  JSParseError,
+  type JSParserOptions,
+} from './parser/errors.js'
+export {
+  type JSBindingPrefixResult,
+  JSExpressionParser,
+  type JSExpressionPrefixResult,
+} from './parser/parser.js'
 export type {
   JSIncompleteBehavior,
   JSScanBoundary,
@@ -95,15 +105,6 @@ export type {
   JSScanProfile,
   JSScanStopReason,
 } from './parser/scanner.js'
-export {
-  type JSBindingPrefixResult,
-  JSExpressionParser,
-  type JSExpressionPrefixResult,
-  JSIncompleteParseError,
-  type JSLocationOptions,
-  JSParseError,
-  type JSParserOptions,
-} from './parser.js'
 
 export interface CompiledExpression {
   readonly source: string
