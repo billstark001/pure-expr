@@ -36,6 +36,7 @@ const EMPTY_RULES: readonly JSLexerRule[] = []
 
 export class JSLexer {
   private pos = 0
+  private readonly tokens: JSToken[] = []
   private readonly includeRaw: boolean
   private readonly rules: readonly JSLexerRule[]
   private readonly numberPolicy: NumberPolicy
@@ -44,6 +45,11 @@ export class JSLexer {
     private readonly src: string,
     options: Readonly<JSLexerOptions> = {},
   ) {
+    const start = options.start ?? 0
+    if (!Number.isInteger(start) || start < 0 || start > src.length) {
+      throw new RangeError('Lexer start must be an integer within the source range')
+    }
+    this.pos = start
     this.includeRaw = options.raw ?? false
     this.rules = options.rules ?? EMPTY_RULES
     this.numberPolicy = compileNumberPolicy(options.numbers)
@@ -54,13 +60,22 @@ export class JSLexer {
   }
 
   tokenize(): JSToken[] {
-    const tokens: JSToken[] = []
+    const start = this.tokens.length
     while (this.pos < this.src.length) {
       this.pos = skipTrivia(this.src, this.pos)
       if (this.pos >= this.src.length) break
-      tokens.push(this.lexToken(tokens))
+      this.tokens.push(this.lexToken(this.tokens))
     }
-    return tokens
+    return start === 0 ? this.tokens : this.tokens.slice(start)
+  }
+
+  /** Read one token, preserving lexical context for subsequent calls. */
+  nextToken(): JSToken | undefined {
+    this.pos = skipTrivia(this.src, this.pos)
+    if (this.pos >= this.src.length) return undefined
+    const token = this.lexToken(this.tokens)
+    this.tokens.push(token)
+    return token
   }
 
   private lexToken(prev: JSToken[]): JSToken {
@@ -140,7 +155,7 @@ export class JSLexer {
       }
 
       if (isLineTerminatorCode(code)) {
-        throw new JSLexError('Unterminated string literal', start, this.src)
+        throw new JSLexError('Unterminated string literal', start, this.src, 'unterminated')
       }
 
       if (code !== CC_BACKSLASH) continue
@@ -154,7 +169,7 @@ export class JSLexer {
       }
     }
 
-    throw new JSLexError('Unterminated string literal', start, this.src)
+    throw new JSLexError('Unterminated string literal', start, this.src, 'unterminated')
   }
 
   private lexIdent(): JSToken {
@@ -180,7 +195,7 @@ export class JSLexer {
       const code = this.src.charCodeAt(this.pos++)
       if (code === CC_BACKSLASH) {
         if (this.pos >= this.src.length || isLineTerminatorCode(this.src.charCodeAt(this.pos))) {
-          throw new JSLexError('Unterminated regex literal', start, this.src)
+          throw new JSLexError('Unterminated regex literal', start, this.src, 'unterminated')
         }
         this.pos++
         continue
@@ -202,11 +217,11 @@ export class JSLexer {
         return this.makeToken('regex', value, start, this.pos)
       }
       if (isLineTerminatorCode(code)) {
-        throw new JSLexError('Unterminated regex literal', start, this.src)
+        throw new JSLexError('Unterminated regex literal', start, this.src, 'unterminated')
       }
     }
 
-    throw new JSLexError('Unterminated regex literal', start, this.src)
+    throw new JSLexError('Unterminated regex literal', start, this.src, 'unterminated')
   }
 
   private lexTemplate(): JSToken {
@@ -249,7 +264,7 @@ export class JSLexer {
       this.pos++
     }
 
-    throw new JSLexError('Unterminated template literal', start, this.src)
+    throw new JSLexError('Unterminated template literal', start, this.src, 'unterminated')
   }
 
   private lexTemplateExpr(): JSToken[] {
@@ -274,14 +289,19 @@ export class JSLexer {
       tokens.push(token)
     }
 
-    throw new JSLexError('Unterminated template expression', this.pos, this.src)
+    throw new JSLexError('Unterminated template expression', this.pos, this.src, 'unterminated')
   }
 
   private lexOp(): JSToken {
     const start = this.pos
     const length = scanOperatorLength(this.src, start)
     if (length === 0) {
-      throw new JSLexError(`Unexpected character '${this.src[this.pos]}'`, this.pos, this.src)
+      throw new JSLexError(
+        `Unexpected character '${this.src[this.pos]}'`,
+        this.pos,
+        this.src,
+        'unexpected-character',
+      )
     }
 
     this.pos += length

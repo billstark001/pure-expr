@@ -106,6 +106,16 @@ describe('core tokenization', () => {
     expect(lexer.tokenize().map(({ value }) => value)).toEqual(['value', '+', '1'])
     expect(lexer.position).toBe(source.length)
   })
+
+  it('supports incremental token reads from an absolute source offset', () => {
+    const source = 'prefix value + 1 suffix'
+    const lexer = new JSLexer(source, { start: source.indexOf('value') })
+
+    expect(lexer.nextToken()).toMatchObject({ value: 'value', start: 7, end: 12 })
+    expect(lexer.nextToken()).toMatchObject({ value: '+', start: 13, end: 14 })
+    expect(lexer.tokenize().map(({ value }) => value)).toEqual(['1', 'suffix'])
+    expect(lexer.nextToken()).toBeUndefined()
+  })
 })
 
 describe('corrected legacy lexer errors', () => {

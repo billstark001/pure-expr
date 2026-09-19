@@ -39,7 +39,9 @@ export function skipTrivia(src: string, start: number): number {
       pos++
     }
 
-    if (!closed) throw new JSLexError('Unterminated block comment', commentStart, src)
+    if (!closed) {
+      throw new JSLexError('Unterminated block comment', commentStart, src, 'unterminated')
+    }
   }
 
   return pos

@@ -5,6 +5,7 @@ export class JSLexError extends Error {
     message: string,
     public readonly pos: number,
     src = '',
+    public readonly code: 'invalid' | 'unexpected-character' | 'unterminated' = 'invalid',
   ) {
     const lo = Math.max(0, pos - 15)
     const hi = Math.min(src.length, pos + 15)
@@ -69,6 +70,8 @@ export interface JSLexerRule {
 
 /** Options for low-level expression tokenization. */
 export interface JSLexerOptions {
+  /** Begin tokenization at this absolute UTF-16 offset. Defaults to zero. */
+  start?: number
   /** Include each token's exact source spelling in its optional `raw` field. */
   raw?: boolean
   /** Restrict accepted number-literal forms. All forms are enabled by default. */
