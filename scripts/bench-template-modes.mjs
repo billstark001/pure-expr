@@ -25,6 +25,20 @@ const layeredTemplateEnvironment = createEvaluationEnvironment({
 
 const CASES = [
   {
+    name: 'dollar-inline',
+    template: 'Hello $user.profile.name, plan=$account.plan.name, seats=$account.plan.seats.',
+    context: {
+      $user: { profile: { name: 'Ada' } },
+      $account: { plan: { name: 'growth', seats: 12 } },
+    },
+    options: {
+      ...BASE_OPTIONS,
+      syntax: 'dollar',
+    },
+    iterations: 120_000,
+    expected: 'Hello Ada, plan=growth, seats=12.',
+  },
+  {
     name: 'member-heavy-text',
     template:
       'Hello {{ user.profile.name }}, plan={{ account.plan.name }}, seats={{ account.plan.seats }}, beta={{ account.flags.beta.enabled }}.',

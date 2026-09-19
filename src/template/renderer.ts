@@ -1,14 +1,19 @@
+import { parserOptionsForEvaluation } from '../expr/evaluator/options.js'
 import {
-  type CompiledExpression,
-  compileExpression,
   type EvalOptions,
   type EvaluationInput,
   JSEvalError,
+  JSEvaluator,
   JSLexError,
   JSParseError,
+  parseExpression,
 } from '../expr/index.js'
+import { validateSourceLength, validateSyntaxBudget } from '../expr/parser/budget.js'
+import { JSExpressionParser } from '../expr/parser/parser.js'
 import {
-  parseTemplate,
+  type ScannedTemplateExpressionSegment,
+  type ScannedTemplateSegment,
+  scanTemplateSource,
   type TemplateExpressionSegment,
   type TemplateParseOptions,
   type TemplateRenderError,
@@ -57,7 +62,7 @@ export interface CompiledTemplate {
 // #region Render helpers
 
 interface CompiledTemplateExpressionSegment extends TemplateExpressionSegment {
-  compiled?: CompiledExpression
+  execute?: (context?: EvaluationInput) => unknown
   precomputedError?: TemplateRenderError
 }
 
@@ -99,24 +104,42 @@ function toTemplateExpressionError(
 }
 
 function buildCompiledTemplateSegments(
-  segments: readonly TemplateSegment[],
+  source: string,
+  segments: readonly ScannedTemplateSegment[],
   options: Readonly<CompileTemplateOptions>,
 ): CompiledTemplateSegment[] {
+  const evalOptions = options.evalOptions ?? {}
+  const parserOptions = parserOptionsForEvaluation(evalOptions)
+  const evaluator = new JSEvaluator(undefined, evalOptions)
+
   return segments.map((segment) => {
     if (segment.type === 'text') return segment
+    const publicExpression = toPublicExpressionSegment(segment)
 
     try {
+      validateSourceLength(segment.expr, parserOptions)
+      const ast = segment.tokens
+        ? new JSExpressionParser(segment.tokens, parserOptions, source).parse()
+        : parseExpression(segment.expr, parserOptions)
+      if (segment.tokens) validateSyntaxBudget(ast, parserOptions, 'expression')
       return {
-        ...segment,
-        compiled: compileExpression(segment.expr, options.evalOptions ?? {}),
+        ...publicExpression,
+        execute: evaluator.compile(ast),
       }
     } catch (error) {
       return {
-        ...segment,
-        precomputedError: toTemplateExpressionError(error, segment),
+        ...publicExpression,
+        precomputedError: toTemplateExpressionError(error, publicExpression),
       }
     }
   })
+}
+
+function toPublicExpressionSegment(
+  segment: ScannedTemplateExpressionSegment,
+): TemplateExpressionSegment {
+  const { tokens: _tokens, ...result } = segment
+  return result
 }
 
 function renderCompiledTemplateSegments(
@@ -143,7 +166,7 @@ function renderCompiledTemplateSegments(
     }
 
     try {
-      const value = segment.compiled!.evaluate(context)
+      const value = segment.execute!(context)
       const text = toStringValue(value)
       out.push(isHtml ? escapeHtml(text) : text)
     } catch (error) {
@@ -174,14 +197,18 @@ export function compileTemplate(
       "Template rendering does not support writes: 'transaction'; use 'commit' with an explicit BindingStore",
     )
   }
-  const parsed = parseTemplate(source, options)
-  const compiledSegments = buildCompiledTemplateSegments(parsed.segments, options)
+  const parsed = scanTemplateSource(source, options)
+  const compiledSegments = buildCompiledTemplateSegments(source, parsed.segments, options)
+  const publicSegments = parsed.segments.map(
+    (segment): TemplateSegment =>
+      segment.type === 'text' ? segment : toPublicExpressionSegment(segment),
+  )
   const defaultFormat = options.format ?? 'text'
   const defaultStrict = options.strict ?? false
 
   return {
     source,
-    segments: parsed.segments,
+    segments: publicSegments,
     render(
       context: EvaluationInput = {},
       renderOptions: CompiledTemplateRenderOptions = {},

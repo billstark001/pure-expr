@@ -30,12 +30,18 @@ export interface JSScanOptions extends JSParserOptions {
 export interface CollectedScanTokens {
   tokens: JSToken[]
   boundaryOffset: number
+  boundaryToken?: JSToken
   stoppedAtBoundary: boolean
+}
+
+export interface CollectScanTokenOptions extends JSScanOptions {
+  /** Whether an unknown host character ends the scan or remains a lexer error. */
+  unexpectedCharacter?: 'boundary' | 'error'
 }
 
 export function collectScanTokens(
   source: string,
-  options: Readonly<JSScanOptions>,
+  options: Readonly<CollectScanTokenOptions>,
 ): CollectedScanTokens {
   const start = options.start ?? 0
   const profile = options.profile ?? 'expression'
@@ -51,6 +57,7 @@ export function collectScanTokens(
       if (
         error instanceof JSLexError &&
         error.code === 'unexpected-character' &&
+        options.unexpectedCharacter !== 'error' &&
         tokens.length > 0
       ) {
         return { tokens, boundaryOffset: error.pos, stoppedAtBoundary: true }
@@ -70,13 +77,25 @@ export function collectScanTokens(
       depth: delimiters.length,
     }
 
+    if (isStructuralBoundary(token, delimiters)) {
+      return {
+        tokens,
+        boundaryOffset: token.start,
+        boundaryToken: token,
+        stoppedAtBoundary: true,
+      }
+    }
+
     if (
       tokens.length > 0 &&
-      (isStructuralBoundary(token, delimiters) ||
-        isProfileBoundary(profile, context) ||
-        options.boundary?.(context) === true)
+      (isProfileBoundary(profile, context) || options.boundary?.(context) === true)
     ) {
-      return { tokens, boundaryOffset: token.start, stoppedAtBoundary: true }
+      return {
+        tokens,
+        boundaryOffset: token.start,
+        boundaryToken: token,
+        stoppedAtBoundary: true,
+      }
     }
 
     if (options.maxSourceLength !== undefined && token.end - start > options.maxSourceLength) {

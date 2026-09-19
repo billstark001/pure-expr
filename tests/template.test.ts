@@ -56,16 +56,67 @@ describe('template parser', () => {
     })
   })
 
-  test('matches the next closing delimiter run without parsing expression syntax', () => {
+  test('ignores closing delimiter runs inside comments', () => {
     const parsed = parseTemplate('A {{ /* }} */ 1 }} B')
 
     expect(parsed.errors).toHaveLength(0)
     expect(parsed.segments[1]).toMatchObject({
       type: 'expression',
-      expr: '/*',
+      syntax: 'braces',
+      expr: '/* }} */ 1',
       delimiterLength: 2,
     })
-    expect(parsed.segments[2]).toEqual({ type: 'text', value: ' */ 1 }} B' })
+    expect(parsed.segments[2]).toEqual({ type: 'text', value: ' B' })
+  })
+
+  test('ignores closing delimiter runs inside strings with ordinary braces', () => {
+    const parsed = parseTemplate('A {{ "}}" }} B')
+
+    expect(parsed.errors).toHaveLength(0)
+    expect(parsed.segments[1]).toMatchObject({
+      type: 'expression',
+      expr: '"}}"',
+      expressionStart: 5,
+      expressionEnd: 9,
+    })
+  })
+
+  test('keeps dollar interpolation opt-in', () => {
+    expect(parseTemplate('Hi $user.name!').segments).toEqual([
+      { type: 'text', value: 'Hi $user.name!' },
+    ])
+  })
+
+  test('parses conservative dollar interpolation and escapes literal dollars', () => {
+    const parsed = parseTemplate('Hi $user.name! $$cost is $100.', { syntax: 'dollar' })
+
+    expect(parsed.errors).toHaveLength(0)
+    expect(parsed.segments).toEqual([
+      { type: 'text', value: 'Hi ' },
+      {
+        type: 'expression',
+        syntax: 'dollar',
+        expr: '$user.name',
+        start: 3,
+        end: 13,
+        expressionStart: 3,
+        expressionEnd: 13,
+        delimiterLength: 1,
+      },
+      { type: 'text', value: '! $cost is $100.' },
+    ])
+  })
+
+  test('allows nested arguments but stops dollar interpolation at top-level whitespace', () => {
+    const parsed = parseTemplate('$format($user.name, "long name") and $other', {
+      syntax: 'dollar',
+    })
+
+    expect(parsed.segments).toMatchObject([
+      { type: 'expression', expr: '$format($user.name, "long name")' },
+      { type: 'text', value: ' and ' },
+      { type: 'expression', expr: '$other' },
+    ])
   })
 
   test('reports unclosed expression', () => {
@@ -98,6 +149,58 @@ describe('template renderer', () => {
     const rendered = renderTemplate('Hi {{ name }}', { name: 'John' })
     expect(rendered.errors).toHaveLength(0)
     expect(rendered.output).toBe('Hi John')
+  })
+
+  test('renders lexically scanned brace expressions', () => {
+    const rendered = renderTemplate('A {{ /* }} */ ({ value: "}}" }).value }} B', {})
+
+    expect(rendered).toEqual({ output: 'A }} B', errors: [] })
+  })
+
+  test('keeps delimiter runs inside regex and template literals', () => {
+    expect(renderTemplate('A {{ /}}/.source }} B', {}).output).toBe('A }} B')
+    expect(renderTemplate('A {{ `}}` }} B', {}).output).toBe('A }} B')
+  })
+
+  test('renders dollar and brace expressions together', () => {
+    const rendered = renderTemplate(
+      'Hi $user.name! Total: {{ $price * $quantity }}; $$5 stays literal.',
+      {
+        $user: { name: 'Ada' },
+        $price: 12,
+        $quantity: 3,
+      },
+      { syntax: 'both' },
+    )
+
+    expect(rendered).toEqual({
+      output: 'Hi Ada! Total: 36; $5 stays literal.',
+      errors: [],
+    })
+  })
+
+  test('reports malformed dollar interpolation as a parse error', () => {
+    const rendered = renderTemplate('Value: $items[', { $items: [] }, { syntax: 'dollar' })
+
+    expect(rendered.output).toBe('Value: ')
+    expect(rendered.errors).toHaveLength(1)
+    expect(rendered.errors[0]?.kind).toBe('parse')
+  })
+
+  test('captures unterminated lexical constructs in dollar interpolation', () => {
+    const parsed = parseTemplate('Value: $format("unterminated', { syntax: 'dollar' })
+    const rendered = renderTemplate(
+      'Value: $format("unterminated',
+      { $format: String },
+      { syntax: 'dollar' },
+    )
+
+    expect(parsed.segments[1]).toMatchObject({
+      type: 'expression',
+      expr: '$format("unterminated',
+    })
+    expect(rendered.output).toBe('Value: ')
+    expect(rendered.errors[0]?.kind).toBe('lex')
   })
 
   test('renders html-safe values when format=html', () => {
@@ -192,6 +295,20 @@ describe('template renderer', () => {
         second: 'y',
       },
       {
+        maxPlaceholders: 1,
+      },
+    )
+
+    expect(rendered.output).toBe('')
+    expect(rendered.errors[0]?.message).toContain('maximum placeholder count')
+  })
+
+  test('counts brace and dollar placeholders against the same budget', () => {
+    const rendered = renderTemplate(
+      'A $first B {{ second }}',
+      { $first: 'x', second: 'y' },
+      {
+        syntax: 'both',
         maxPlaceholders: 1,
       },
     )

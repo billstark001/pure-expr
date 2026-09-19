@@ -7,6 +7,7 @@ export {
   type TemplateParseResult,
   type TemplateRenderError,
   type TemplateSegment,
+  type TemplateSyntax,
   type TemplateTextSegment,
 } from './parser.js'
 
