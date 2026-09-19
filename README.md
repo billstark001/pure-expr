@@ -3,7 +3,7 @@
 pure-expr is an ESM-first TypeScript library for two related jobs:
 
 - parsing and evaluating small JavaScript-like expressions against a controlled context
-- parsing and rendering text templates with {{ expression }} placeholders
+- parsing and rendering text templates with `{{ expression }}` and opt-in `$name` placeholders
 
 It also exports the lower-level lexer, parser, evaluator and restricted ESTree AST types.
 
@@ -40,6 +40,11 @@ const rendered = renderTemplate('Hello {{ user.name }}!', {
 const compiledTemplate = compileTemplate('Hello {{ user.name }}!');
 compiledTemplate.render({ user: { name: 'Linus' } });
 // { output: 'Hello Linus!', errors: [] }
+
+const inline = renderTemplate('Hello $user.name!', {
+ $user: { name: 'Grace' },
+}, { syntax: 'dollar' });
+// { output: 'Hello Grace!', errors: [] }
 ```
 
 ## Expected Use Cases
@@ -58,7 +63,12 @@ It is not a fit for general-purpose plugin execution or sandboxing untrusted Jav
 
 ```ts
 import { evaluate, compile } from 'pure-expr';
-import { parseExpression, tokenizeExpression } from 'pure-expr/expr';
+import {
+ parseBindingPattern,
+ parseExpression,
+ scanExpression,
+ tokenizeExpression,
+} from 'pure-expr/expr';
 import { parseTemplate, renderTemplate, compileTemplate } from 'pure-expr/template';
 ```
 
@@ -87,8 +97,63 @@ Useful expression APIs:
 - compileExpression(source, options): parse and precompile once, then evaluate many times
 - tokenizeExpression(source): inspect lexer output
 - parseExpression(source, options): inspect the restricted ESTree AST directly
+- scanExpression(source, options): read one expression from a larger host-language string
+- parseBindingPattern(source, options): parse a standalone ESTree binding pattern
+- scanBindingPattern(source, options): read one binding pattern from a larger string
+- parseIterationClause(source, options): parse a contextual `<binding> of <expression>` DSL clause
 
 The expression AST uses standard ESTree nodes wherever the supported syntax has one, including `BinaryExpression`, `ChainExpression`, `ArrowFunctionExpression`, and the standard binding patterns. Hack pipelines are exposed as the explicit `PipelineExpression` and `TopicReference` extensions. Parser offsets are internal and are not emitted. Pass `locations: true` to add standard ESTree `loc` fields, or pass `locations: { startLine, startColumn, source }` to place an expression inside a larger source file. ESTree lines are one-based and columns are zero-based. The package intentionally does not accept or emit the previous lowercase custom AST format.
+
+### Host-Language Scanning
+
+`scanExpression(...)` reads one expression beginning at an absolute source offset and returns the AST together with its exact range, the first unconsumed offset, and why scanning stopped. The default `expression` profile follows the expression grammar. The `interpolation` profile additionally treats top-level commas, semicolons, postfix-looking `!`, and a dot without an immediately adjacent property name as host-text boundaries.
+
+```ts
+import { scanExpression } from 'pure-expr/expr';
+
+const source = 'You are $user.name, welcome!';
+const scanned = scanExpression(source, {
+ start: source.indexOf('$'),
+ profile: 'interpolation',
+});
+
+source.slice(scanned.start, scanned.end); // '$user.name'
+scanned.next; // offset of ','
+scanned.stoppedBy; // 'boundary'
+```
+
+Nested punctuation remains part of the expression, so `$format(first, last), ...` stops at the outer comma rather than the call-argument comma. The interpolation dot rule intentionally requires adjacency: `$user.name` continues through the dot, while `$job.` and `$user . name` stop before it.
+
+By default, an unfinished continuation such as `value +`, `object.`, or `fn(` raises `JSIncompleteParseError`. Pass `incomplete: 'rollback'` to return the most recent complete top-level expression instead:
+
+```ts
+const scanned = scanExpression('value +', { incomplete: 'rollback' });
+// expression: Identifier('value')
+// stoppedBy: 'incomplete'
+// next: offset of '+'
+```
+
+Rollback applies only to source exhaustion after a valid continuation begins. Hard syntax errors such as `value + * other`, malformed literals, and unterminated strings, regular expressions, comments, or template literals still throw. A custom `boundary` predicate receives the next token and current delimiter depth before that token is accepted, allowing host DSLs to define contextual separators without adding operators to the expression language.
+
+### Binding Patterns And Iteration Clauses
+
+Binding patterns use the same identifiers, destructuring grammar, default-value expression parser, locations, and resource budgets as arrow parameters:
+
+```ts
+import {
+ parseBindingPattern,
+ parseIterationClause,
+ scanBindingPattern,
+} from 'pure-expr/expr';
+
+parseBindingPattern('{ id: local, values: [first, ...rest] }');
+
+const clause = parseIterationClause('[item, index] of entries.filter(active)');
+// clause.binding: ArrayPattern
+// clause.iterable: CallExpression
+```
+
+`of` is contextual in `parseIterationClause(...)`; it is not a binary operator and cannot be evaluated as `left of right`. For other DSL separators, use `scanBindingPattern(...)` with a `boundary` predicate, then parse or scan the remaining expression independently.
 
 Useful expression options:
 
@@ -117,6 +182,13 @@ Useful expression options:
 - isCallableAllowed: customize which functions, methods, and template tags may execute
 - propertyAccess: customize every property and method read; use the exported ownPropertyAccess helper to reject inherited properties
 - taggedTemplateArrayMode: use spec-like frozen cached template objects by default, or loose for the older plain-array emulation
+
+Scanner-only options:
+
+- start: absolute UTF-16 source offset at which scanning begins
+- profile: `expression` by default, or `interpolation` for common surrounding-text punctuation
+- incomplete: `error` by default, or `rollback` to return the last complete top-level prefix
+- boundary: additional token predicate for contextual host-language separators
 
 ### Context Isolation And Mutable Variables
 
@@ -244,7 +316,19 @@ tokens.map(({ value, raw }) => ({ value, raw }));
 // ]
 ```
 
+`JSLexer` also supports incremental reads and absolute starting offsets. `nextToken()` returns one token while preserving the same previous-token context used by `tokenize()`; a later `tokenize()` call returns the remaining tokens.
+
+```ts
+const source = 'prefix value + 1';
+const lexer = new JSLexer(source, { start: source.indexOf('value') });
+
+lexer.nextToken(); // identifier `value` with absolute offsets
+lexer.tokenize(); // `+`, `1`
+```
+
 Each `JSToken` always has `kind`, `value`, `start`, and `end`. The optional `raw` field is omitted by default to avoid duplicating the source spelling; enable `{ raw: true }` when a custom rule rewrites `value` or tooling needs the original text. Template tokens additionally expose cooked/raw quasis and the token streams for embedded expressions through `tmpl`.
+
+`JSLexError.code` classifies failures as `invalid`, `unexpected-character`, or `unterminated`. Scanners treat only an unexpected character after an already tokenized prefix as a host boundary; malformed and unterminated lexical constructs remain errors.
 
 Custom rules are tested in declaration order before built-in tokenization. Their `match` and `advance` callbacks receive the full source, current position, and preceding tokens; normal functions also receive the active lexer as `this`. `advance` must return a token beginning at the current position with a non-empty, in-bounds range. Rules apply recursively inside JavaScript template-literal expressions.
 
@@ -252,11 +336,11 @@ Number policy defaults match the full supported syntax. `numbers.radices` accept
 
 ## Template Features
 
-The template module parses text with repeated-brace placeholders such as {{ expr }} or {{{{ expr }}}}. Rendering can return plain text or HTML-escaped output, and compileTemplate(...) lets you parse and compile template expressions once for repeated rendering.
+The template module supports repeated-brace placeholders such as `{{ expr }}` or `{{{{ expr }}}}`. Its incremental expression scan understands strings, regular expressions, comments, template literals, and nested delimiters while locating the matching outer brace run. Consequently, `{{ "}}" }}`, `{{ /* }} */ value }}`, and object literals work without increasing the delimiter length. Invalid embedded syntax still uses the next matching raw brace run as a recovery boundary so later template content can be processed.
 
-Template placeholder closing behaves like a repeated-brace delimiter match, similar to how a <script> tag looks for its closing token. The parser does not partially understand the embedded JavaScript while searching for the end of a placeholder; it simply matches the next run of } characters whose length matches the opening delimiter. If the expression source itself contains that same closing run, you must increase the delimiter length on both sides.
+Set `syntax` to `dollar` or `both` to enable concise interpolation beginning with a dollar-prefixed identifier. The dollar sign remains part of the identifier, so `$user.name` reads the `$user` context binding. Inline interpolation deliberately accepts only a root identifier followed by adjacent property access, optional chaining, calls, or computed access. Whitespace and top-level operators end it; use braces for arbitrary expressions. `$$` emits one literal dollar sign, and currency-like text such as `$100` is left unchanged.
 
-Template parsing also accepts maxSourceLength and maxPlaceholders so oversized templates can be rejected before expression evaluation starts.
+Template parsing also accepts `maxSourceLength` and `maxPlaceholders`; both brace and dollar placeholders count toward the same placeholder budget. Dollar interpolation is opt-in, so the default `braces` syntax preserves literal dollar-prefixed text.
 
 ```ts
 import { compileTemplate, parseTemplate, renderTemplate } from 'pure-expr/template';
@@ -267,9 +351,15 @@ const rendered = renderTemplate('Hi {{ user.name }}', {
 });
 const compiled = compileTemplate('Hi {{ user.name }}');
 compiled.render({ user: { name: 'Linus' } });
+
+renderTemplate(
+ 'Hi $user.name! Total: {{ $price * $quantity }}; $$5 is literal.',
+ { $user: { name: 'Ada' }, $price: 12, $quantity: 3 },
+ { syntax: 'both' },
+);
 ```
 
-renderTemplate(...) and compileTemplate(...) both accept evalOptions plus template-level maxSourceLength and maxPlaceholders so the same call policy, budgets, and context/object hardening can be reused for template expressions.
+`parseTemplate(...)`, `renderTemplate(...)`, and `compileTemplate(...)` accept `syntax: 'braces' | 'dollar' | 'both'`, plus template-level `maxSourceLength` and `maxPlaceholders`. Rendering and compilation also accept `evalOptions`, so the same call policy, expression budgets, and context/object hardening can be reused for every placeholder. Compilation reuses the tokens collected by the boundary scan and compiles the resulting AST directly instead of parsing valid placeholders twice.
 
 ## Notes And Limits
 
@@ -285,7 +375,8 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 - Resource controls such as maxSourceLength, AST budgets, maxSteps, allowCalls, and allowRegexLiterals are opt-in. Arrow callbacks share their originating evaluation's step and call-depth budgets, including callbacks invoked repeatedly by allowed host functions.
 - The runtime step budget now counts elements expanded through array and call spread syntax.
 - Untagged template literals reject invalid escape sequences. Tagged template literals preserve raw text and expose undefined cooked values for those segments.
-- Template placeholders do not parse embedded JavaScript while searching for their closing delimiter. If the embedded source contains the same closing brace run as the surrounding delimiter, increase the delimiter length on both sides.
+- Brace template placeholders use lexical structure to ignore apparent closing runs inside strings, comments, regular expressions, template literals, and nested delimiters. For malformed lexical input, raw delimiter matching is used only as an error-recovery boundary.
+- Expression scanning cannot infer author intent when host text is itself a valid continuation. Select the interpolation profile or provide a boundary predicate for ambiguous host syntaxes.
 - `compileExpression(...)` precompiles the complete restricted ESTree into cached evaluator closures. The `functionMode: 'performance'` option additionally precompiles pure-expr-generated arrow bodies and parameter binders while preserving the same safety and budget semantics.
 
 ## Publishing
@@ -307,6 +398,7 @@ pnpm run bench:expr
 pnpm run bench:context
 pnpm run bench:template
 pnpm run bench:lexer
+pnpm run bench:scanner
 pnpm run ci
 ```
 
@@ -317,3 +409,5 @@ The context benchmark compares compiled evaluation throughput across reference, 
 The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, short repeated, and layered committed-write templates.
 
 The lexer benchmark reports source and token throughput for the default path, source retention with `raw: true`, number-policy validation, and ordered custom-rule misses, early hits, late hits, and combined raw-token paths.
+
+The scanner benchmark compares strict expression parsing, complete-expression scanning, host interpolation boundaries, incomplete rollback, standalone binding patterns, contextual binding scans, and complete iteration clauses.
