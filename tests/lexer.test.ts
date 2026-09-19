@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cookTemplate, JSLexError, JSLexer } from '../src/expr/lexer/index.js'
+import { LEXICAL_PUNCTUATORS } from '../src/expr/operators.js'
 
 function compact(source: string) {
   return new JSLexer(source).tokenize().map((token) => ({
@@ -47,12 +48,8 @@ describe('core tokenization', () => {
     ])
   })
 
-  it('lexes the legacy operator set with maximal munch', () => {
-    const operators =
-      '>>>= ... === !== >>> <<= >>= += -= *= /= %= &= |= ^= ??= ||= &&= **= ++ -- == != <= >= << >> ** && || ?? |> ?. => = + - * / % & | ^ ~ ! < > ? : . , ( ) [ ] { } ;'.split(
-        ' ',
-      )
-    for (const operator of operators) {
+  it('lexes every registered punctuator with maximal munch', () => {
+    for (const operator of LEXICAL_PUNCTUATORS) {
       const tokens = new JSLexer(`a ${operator} b`).tokenize()
       expect(tokens[1].kind).toBe('op')
       expect(tokens[1].value).toBe(operator)

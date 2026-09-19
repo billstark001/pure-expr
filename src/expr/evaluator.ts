@@ -36,6 +36,7 @@ import {
   assignIdentifier,
   compileDirectLocalIdentifier,
   evaluateLogicalOperator,
+  isAssignmentShortCircuited,
   readProperty,
   resolveDirectIdentifier,
   resolveDirectLocalIdentifier,
@@ -138,14 +139,9 @@ export function evalNode(node: ExpressionNode, state: EvalState): unknown {
     case 'AssignmentExpression': {
       const name = node.left.name
       const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
-      if (node.operator === '&&=' && !current) return current
-      if (node.operator === '||=' && current) return current
-      if (node.operator === '??=' && current !== null && current !== undefined) return current
+      if (isAssignmentShortCircuited(node.operator, current)) return current
       const right = evalNode(node.right, state)
-      const value =
-        node.operator === '&&=' || node.operator === '||=' || node.operator === '??='
-          ? right
-          : applyAssignmentOperator(node.operator, current, right)
+      const value = applyAssignmentOperator(node.operator, current, right)
       return assignIdentifier(name, value, state)
     }
     case 'UnaryExpression':

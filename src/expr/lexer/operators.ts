@@ -1,101 +1,98 @@
-import {
-  CC_AMPERSAND,
-  CC_ASTERISK,
-  CC_CARET,
-  CC_COLON,
-  CC_COMMA,
-  CC_DOT,
-  CC_EQUAL,
-  CC_EXCLAMATION,
-  CC_GT,
-  CC_LEFT_BRACE,
-  CC_LEFT_BRACKET,
-  CC_LEFT_PAREN,
-  CC_LT,
-  CC_MINUS,
-  CC_PERCENT,
-  CC_PIPE,
-  CC_PLUS,
-  CC_QUESTION,
-  CC_RIGHT_BRACE,
-  CC_RIGHT_BRACKET,
-  CC_RIGHT_PAREN,
-  CC_SEMICOLON,
-  CC_SLASH,
-  CC_TILDE,
-  isDecimalDigitCode,
-} from './char-codes.js'
+import { LEXICAL_PUNCTUATORS } from '../operators.js'
+import { isDecimalDigitCode } from './char-codes.js'
+
+const ASCII_CARDINALITY = 128
+const DEAD_STATE = 0
+const ROOT_STATE = 1
+
+interface MutableTrieState {
+  acceptingLength: number
+  transitions: Map<number, number>
+}
+
+function compilePunctuatorDfa(): {
+  acceptingLengths: Uint8Array
+  continuingStates: Uint8Array
+  maxLength: number
+  transitions: Uint8Array
+} {
+  const states: MutableTrieState[] = [
+    { acceptingLength: 0, transitions: new Map() },
+    { acceptingLength: 0, transitions: new Map() },
+  ]
+  let maxLength = 0
+
+  for (const punctuator of LEXICAL_PUNCTUATORS) {
+    maxLength = Math.max(maxLength, punctuator.length)
+    let state = ROOT_STATE
+    for (let index = 0; index < punctuator.length; index += 1) {
+      const code = punctuator.charCodeAt(index)
+      if (code >= ASCII_CARDINALITY) {
+        throw new TypeError(`Lexer punctuator '${punctuator}' must contain only ASCII characters`)
+      }
+      let next = states[state].transitions.get(code)
+      if (next === undefined) {
+        next = states.length
+        states[state].transitions.set(code, next)
+        states.push({ acceptingLength: 0, transitions: new Map() })
+      }
+      state = next
+    }
+    states[state].acceptingLength = punctuator.length
+  }
+
+  if (states.length > 0xff) throw new TypeError('Lexer punctuator DFA exceeds 255 states')
+  const transitions = new Uint8Array(states.length * ASCII_CARDINALITY)
+  const acceptingLengths = new Uint8Array(states.length)
+  const continuingStates = new Uint8Array(states.length)
+  for (let state = ROOT_STATE; state < states.length; state += 1) {
+    acceptingLengths[state] = states[state].acceptingLength
+    continuingStates[state] = states[state].transitions.size === 0 ? 0 : 1
+    for (const [code, next] of states[state].transitions) {
+      transitions[state * ASCII_CARDINALITY + code] = next
+    }
+  }
+  return { acceptingLengths, continuingStates, maxLength, transitions }
+}
+
+const {
+  acceptingLengths: PUNCTUATOR_ACCEPTING_LENGTHS,
+  continuingStates: PUNCTUATOR_CONTINUING_STATES,
+  maxLength: MAX_PUNCTUATOR_LENGTH,
+  transitions: PUNCTUATOR_TRANSITIONS,
+} = compilePunctuatorDfa()
 
 export function scanOperatorLength(src: string, pos: number): number {
-  const code = src.charCodeAt(pos)
-  const next = src.charCodeAt(pos + 1)
-  const third = src.charCodeAt(pos + 2)
-  const fourth = src.charCodeAt(pos + 3)
-
-  switch (code) {
-    case CC_GT:
-      if (next === CC_GT) {
-        if (third === CC_GT) return fourth === CC_EQUAL ? 4 : 3
-        return third === CC_EQUAL ? 3 : 2
+  let state = ROOT_STATE
+  let matchedLength = 0
+  for (let offset = 0; offset < MAX_PUNCTUATOR_LENGTH; offset += 1) {
+    if (pos + offset >= src.length) break
+    const code = src.charCodeAt(pos + offset)
+    if (code >= ASCII_CARDINALITY) break
+    state = PUNCTUATOR_TRANSITIONS[(state << 7) + code]
+    if (state === DEAD_STATE) break
+    const acceptingLength = PUNCTUATOR_ACCEPTING_LENGTHS[state]
+    if (acceptingLength !== 0) {
+      matchedLength = acceptingLength
+      if (PUNCTUATOR_CONTINUING_STATES[state] === 0) {
+        if (
+          acceptingLength === 2 &&
+          src.charCodeAt(pos) === 0x3f &&
+          isDecimalDigitCode(src.charCodeAt(pos + acceptingLength))
+        ) {
+          return 1
+        }
+        return acceptingLength
       }
-      return next === CC_EQUAL ? 2 : 1
-
-    case CC_LT:
-      if (next === CC_LT) return third === CC_EQUAL ? 3 : 2
-      return next === CC_EQUAL ? 2 : 1
-
-    case CC_EQUAL:
-      if (next === CC_EQUAL) return third === CC_EQUAL ? 3 : 2
-      return next === CC_GT ? 2 : 1
-
-    case CC_EXCLAMATION:
-      if (next === CC_EQUAL) return third === CC_EQUAL ? 3 : 2
-      return 1
-
-    case CC_PLUS:
-      return next === CC_PLUS || next === CC_EQUAL ? 2 : 1
-
-    case CC_MINUS:
-      return next === CC_MINUS || next === CC_EQUAL ? 2 : 1
-
-    case CC_ASTERISK:
-      if (next === CC_ASTERISK) return third === CC_EQUAL ? 3 : 2
-      return next === CC_EQUAL ? 2 : 1
-
-    case CC_SLASH:
-    case CC_PERCENT:
-    case CC_CARET:
-      return next === CC_EQUAL ? 2 : 1
-
-    case CC_AMPERSAND:
-      if (next === CC_AMPERSAND) return third === CC_EQUAL ? 3 : 2
-      return next === CC_EQUAL ? 2 : 1
-
-    case CC_PIPE:
-      if (next === CC_PIPE) return third === CC_EQUAL ? 3 : 2
-      if (next === CC_EQUAL || next === CC_GT) return 2
-      return 1
-
-    case CC_QUESTION:
-      if (next === CC_QUESTION) return third === CC_EQUAL ? 3 : 2
-      return next === CC_DOT && !isDecimalDigitCode(third) ? 2 : 1
-
-    case CC_DOT:
-      return next === CC_DOT && third === CC_DOT ? 3 : 1
-
-    case CC_TILDE:
-    case CC_COLON:
-    case CC_COMMA:
-    case CC_LEFT_PAREN:
-    case CC_RIGHT_PAREN:
-    case CC_LEFT_BRACKET:
-    case CC_RIGHT_BRACKET:
-    case CC_LEFT_BRACE:
-    case CC_RIGHT_BRACE:
-    case CC_SEMICOLON:
-      return 1
-
-    default:
-      return 0
+    }
   }
+
+  if (
+    matchedLength === 2 &&
+    src.charCodeAt(pos) === 0x3f &&
+    isDecimalDigitCode(src.charCodeAt(pos + matchedLength))
+  ) {
+    return 1
+  }
+  return matchedLength
 }

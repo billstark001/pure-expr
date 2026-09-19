@@ -26,6 +26,7 @@ import type {
   TemplateLiteral as ESTreeTemplateLiteral,
   UnaryExpression as ESTreeUnaryExpression,
 } from 'estree'
+import type { SupportedUnaryOperator } from './operators.js'
 
 /** Any standard ESTree node (including its optional `loc` and `range` fields). */
 export type AstNode = BaseNode
@@ -38,8 +39,9 @@ export interface TopicReference extends BaseNode {
   type: 'TopicReference'
 }
 
-export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument'> {
+export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument' | 'operator'> {
   argument: ExpressionNode
+  operator: SupportedUnaryOperator
 }
 
 export interface AwaitExpression extends Omit<ESTreeAwaitExpression, 'argument'> {

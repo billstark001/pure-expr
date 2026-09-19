@@ -5,6 +5,7 @@ import type {
   LogicalExpression,
   UnaryExpression,
 } from '../node-types.js'
+import { isLogicalAssignmentOperator, type SupportedAssignmentOperator } from '../operators.js'
 import { assignScopeBinding, resolveScopeBinding } from './context.js'
 import { BLOCKED_GLOBALS, BLOCKED_PROPS } from './security.js'
 import { ensureEvalScope } from './state.js'
@@ -125,7 +126,28 @@ export function assignIdentifier(name: string, value: unknown, state: EvalState)
   return assignScopeBinding(ensureEvalScope(state), name, value)
 }
 
-export function applyAssignmentOperator(operator: string, left: unknown, right: unknown): unknown {
+export function isAssignmentShortCircuited(
+  operator: SupportedAssignmentOperator,
+  current: unknown,
+): boolean {
+  if (!isLogicalAssignmentOperator(operator)) return false
+  switch (operator) {
+    case '&&=':
+      return !current
+    case '||=':
+      return !!current
+    case '??=':
+      return current !== null && current !== undefined
+    default:
+      return assertUnknownOperator('assignment', operator)
+  }
+}
+
+export function applyAssignmentOperator(
+  operator: SupportedAssignmentOperator,
+  left: unknown,
+  right: unknown,
+): unknown {
   switch (operator) {
     case '=':
       return right
@@ -153,8 +175,12 @@ export function applyAssignmentOperator(operator: string, left: unknown, right: 
       return (left as any) >> (right as any)
     case '>>>=':
       return (left as any) >>> (right as any)
+    case '&&=':
+    case '||=':
+    case '??=':
+      return right
     default:
-      throw new JSEvalError(`Unknown assignment operator '${operator}'`)
+      return assertUnknownOperator('assignment', operator)
   }
 }
 
@@ -208,10 +234,12 @@ export function applyUnaryOperator(node: UnaryExpression, value: unknown): unkno
       return +(value as any)
     case '-':
       return -(value as any)
+    case 'typeof':
+      return typeof value
     case 'void':
       return undefined
     default:
-      throw new JSEvalError(`Unknown unary operator '${node.operator}'`, node)
+      return assertUnknownOperator('unary', node.operator, node)
   }
 }
 
@@ -268,7 +296,7 @@ export function applyBinaryOperator(
     case 'in':
       return (left as any) in (right as any)
     default:
-      throw new JSEvalError(`Unknown binary operator '${node.operator}'`, node)
+      return assertUnknownOperator('binary', node.operator, node)
   }
 }
 
@@ -284,5 +312,11 @@ export function evaluateLogicalOperator(
       return left ? left : evaluateRight()
     case '??':
       return left != null ? left : evaluateRight()
+    default:
+      return assertUnknownOperator('logical', node.operator, node)
   }
+}
+
+function assertUnknownOperator(kind: string, operator: never, node?: AstNode): never {
+  throw new JSEvalError(`Unknown ${kind} operator '${String(operator)}'`, node)
 }

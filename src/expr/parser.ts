@@ -1,21 +1,25 @@
 import type { JSToken, JSTokenKind } from './lexer/index.js'
 import type { ExpressionNode as PublicExpressionNode } from './node-types.js'
 import {
+  BINARY_OPERATOR_INFO,
+  getInfixOperatorInfo,
+  isAssignmentOperator,
+  isBinaryKeywordOperator,
+  isBinaryOperator,
+  isLogicalOperator,
+  isUnaryKeywordOperator,
+  isUnarySymbolOperator,
+  PREC,
+} from './operators.js'
+import {
   isArrowFunctionStart as detectArrowFunctionStart,
   type ParserBindingDelegate,
   parseArrowFunction as parseArrowFunctionWithBindings,
 } from './parser/bindings.js'
 import { type JSLocationOptions, JSParseError, type JSParserOptions } from './parser/errors.js'
-import {
-  ASSIGNMENT_OPERATORS,
-  FORBIDDEN_PREFIX_IDENTIFIERS,
-  INFIX_PREC,
-  PREC,
-  RIGHT_ASSOC,
-} from './parser/grammar.js'
+import { FORBIDDEN_PREFIX_IDENTIFIERS } from './parser/grammar.js'
 import type {
   ArrowFunctionExpression,
-  AssignmentExpression,
   BinaryExpression,
   CallExpression,
   ChainExpression,
@@ -99,7 +103,7 @@ export class JSExpressionParser {
     if (!this.opts.allowAssignments) return this.parsePipeExpr()
     const left = this.parsePipeExpr()
     const assignment = this.peek()
-    if (assignment?.kind !== 'op' || !ASSIGNMENT_OPERATORS.has(assignment.value)) {
+    if (assignment?.kind !== 'op' || !isAssignmentOperator(assignment.value)) {
       return left
     }
     if (left.type !== 'Identifier') {
@@ -108,7 +112,7 @@ export class JSExpressionParser {
     this.advance()
     return {
       type: 'AssignmentExpression',
-      operator: assignment.value as AssignmentExpression['operator'],
+      operator: assignment.value,
       left,
       right: this.parseAssignmentExpr(),
       start: left.start,
@@ -247,32 +251,16 @@ export class JSExpressionParser {
         continue
       }
 
-      // ── `in` keyword as infix operator (if enabled) ───────────────
-      if (t.kind === 'identifier' && t.value === 'in' && this.opts.allowIn !== false) {
-        const prec = PREC.RELATIONAL
+      // ── Keyword infix operators ────────────────────────────────────
+      if (t.kind === 'identifier' && isBinaryKeywordOperator(t.value)) {
+        if (t.value === 'in' && this.opts.allowIn === false) break
+        const prec = BINARY_OPERATOR_INFO[t.value].precedence
         if (prec < minPrec) break
         this.advance()
         const right = this.parseExpr(prec + 1)
         left = {
           type: 'BinaryExpression',
-          operator: 'in',
-          left,
-          right,
-          start: left.start,
-          end: this.lastEnd(),
-        } satisfies BinaryExpression
-        continue
-      }
-
-      // ── `instanceof` keyword as infix operator ────────────────────
-      if (t.kind === 'identifier' && t.value === 'instanceof') {
-        const prec = PREC.RELATIONAL
-        if (prec < minPrec) break
-        this.advance()
-        const right = this.parseExpr(prec + 1)
-        left = {
-          type: 'BinaryExpression',
-          operator: 'instanceof',
+          operator: t.value,
           left,
           right,
           start: left.start,
@@ -283,7 +271,7 @@ export class JSExpressionParser {
 
       // ── Regular infix operators ───────────────────────────────────
       if (t.kind === 'op') {
-        if (ASSIGNMENT_OPERATORS.has(t.value)) {
+        if (isAssignmentOperator(t.value)) {
           if (!this.opts.allowAssignments) {
             throw new JSParseError(
               `Assignment operator '${t.value}' is not allowed in read-only expressions`,
@@ -294,34 +282,35 @@ export class JSExpressionParser {
           break
         }
 
-        const prec = INFIX_PREC[t.value]
-        if (prec === undefined || prec < minPrec) break
+        const info = getInfixOperatorInfo(t.value)
+        if (!info || info.precedence < minPrec) break
 
         this.advance()
-        const isRight = RIGHT_ASSOC.has(t.value)
-        const nextMin = isRight ? prec : prec + 1
+        const nextMin = info.associativity === 'right' ? info.precedence : info.precedence + 1
         const right = this.parseExpr(nextMin)
 
         // Logical operators get their own node type
-        if (t.value === '&&' || t.value === '||' || t.value === '??') {
+        if (isLogicalOperator(t.value)) {
           assertValidLogicalMixing(t.value, left, right, t, this.parenthesizedNodes, this.src)
           left = {
             type: 'LogicalExpression',
-            operator: t.value as any,
+            operator: t.value,
             left,
             right,
             start: left.start,
             end: this.lastEnd(),
           } satisfies LogicalExpression
-        } else {
+        } else if (isBinaryOperator(t.value)) {
           left = {
             type: 'BinaryExpression',
-            operator: t.value as BinaryExpression['operator'],
+            operator: t.value,
             left,
             right,
             start: left.start,
             end: this.lastEnd(),
           } satisfies BinaryExpression
+        } else {
+          break
         }
         continue
       }
@@ -494,7 +483,7 @@ export class JSExpressionParser {
         throw new JSParseError(`'${t.value}' is not allowed in read-only expressions`, t, this.src)
 
       // Unary keyword operators
-      if (t.value === 'typeof' || t.value === 'void') {
+      if (isUnaryKeywordOperator(t.value)) {
         this.advance()
         const argument = this.parseExpr(PREC.UNARY)
         return {
@@ -529,7 +518,7 @@ export class JSExpressionParser {
         return { type: 'TopicReference', start: t.start, end: t.end } satisfies TopicReference
       }
 
-      if (t.value === '!' || t.value === '~' || t.value === '+' || t.value === '-') {
+      if (isUnarySymbolOperator(t.value)) {
         this.advance()
         const argument = this.parseExpr(PREC.EXP)
         return {

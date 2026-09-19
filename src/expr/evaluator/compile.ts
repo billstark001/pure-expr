@@ -28,6 +28,7 @@ import {
   applyUnaryOperator,
   assignIdentifier,
   evaluateLogicalOperator,
+  isAssignmentShortCircuited,
   readProperty,
   resolveIdentifier,
 } from './operations.js'
@@ -124,14 +125,9 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
         const right = compileNode(node.right)
         return withCompiledStep(node, (state) => {
           const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
-          if (node.operator === '&&=' && !current) return current
-          if (node.operator === '||=' && current) return current
-          if (node.operator === '??=' && current !== null && current !== undefined) return current
+          if (isAssignmentShortCircuited(node.operator, current)) return current
           const rightValue = right(state)
-          const value =
-            node.operator === '&&=' || node.operator === '||=' || node.operator === '??='
-              ? rightValue
-              : applyAssignmentOperator(node.operator, current, rightValue)
+          const value = applyAssignmentOperator(node.operator, current, rightValue)
           return assignIdentifier(node.left.name, value, state)
         })
       }
