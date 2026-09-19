@@ -10,6 +10,8 @@ import { assignScopeBinding, resolveScopeBinding } from './context.js'
 import { BLOCKED_GLOBALS, BLOCKED_PROPS } from './security.js'
 import { ensureEvalScope } from './state.js'
 import {
+  type DirectEvalState,
+  type DirectLocalEvalState,
   type EvalState,
   JSEvalError,
   type PropertyAccessPolicy,
@@ -17,24 +19,24 @@ import {
 } from './types.js'
 
 export function resolveIdentifier(node: Identifier, state: EvalState): unknown {
-  if (state.directContext) return resolveDirectIdentifier(node, state)
+  if (state.kind === 'direct') return resolveDirectIdentifier(node, state)
   if (node.name === 'undefined') return undefined
   if (BLOCKED_GLOBALS.has(node.name)) {
     throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
   }
   let value: unknown
-  if (state.directLocals) {
-    if (Object.prototype.hasOwnProperty.call(state.directLocals, node.name)) {
-      value = state.directLocals[node.name]
+  if (state.kind === 'direct-local') {
+    if (Object.prototype.hasOwnProperty.call(state.locals, node.name)) {
+      value = state.locals[node.name]
     } else {
-      const context = state.directRootContext!
+      const context = state.rootContext
       if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
         throw new JSEvalError(`'${node.name}' is not defined`, node)
       }
       value = context[node.name]
     }
   } else {
-    const scope = state.scope!
+    const scope = state.scope
     if (Object.prototype.hasOwnProperty.call(scope.locals, node.name)) {
       value = scope.locals[node.name]
     } else if (!scope.parent && scope.environment.directContext) {
@@ -44,7 +46,7 @@ export function resolveIdentifier(node: Identifier, state: EvalState): unknown {
       }
       value = context[node.name]
     } else {
-      value = resolveScopeBinding(scope, node.name)
+      value = resolveScopeBinding(scope, node.name, node)
     }
   }
   if (value === UNINITIALIZED_ARROW_PARAM) {
@@ -58,7 +60,7 @@ export function resolveDirectIdentifier(node: Identifier, state: EvalState): unk
   if (BLOCKED_GLOBALS.has(node.name)) {
     throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
   }
-  const context = state.directContext!
+  const context = (state as DirectEvalState).context
   if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
     throw new JSEvalError(`'${node.name}' is not defined`, node)
   }
@@ -74,11 +76,12 @@ export function resolveDirectLocalIdentifier(node: Identifier, state: EvalState)
   if (BLOCKED_GLOBALS.has(node.name)) {
     throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
   }
+  const directState = state as DirectLocalEvalState
   let value: unknown
-  if (Object.prototype.hasOwnProperty.call(state.directLocals!, node.name)) {
-    value = state.directLocals![node.name]
+  if (Object.prototype.hasOwnProperty.call(directState.locals, node.name)) {
+    value = directState.locals[node.name]
   } else {
-    const context = state.directRootContext!
+    const context = directState.rootContext
     if (!Object.prototype.hasOwnProperty.call(context, node.name)) {
       throw new JSEvalError(`'${node.name}' is not defined`, node)
     }
@@ -103,7 +106,7 @@ export function compileDirectLocalIdentifier(
   }
   if (boundNames.has(name)) {
     return (state) => {
-      const value = state.directLocals![name]
+      const value = (state as DirectLocalEvalState).locals[name]
       if (value === UNINITIALIZED_ARROW_PARAM) {
         throw new JSEvalError(`Cannot access '${name}' before initialization`, node)
       }
@@ -111,7 +114,7 @@ export function compileDirectLocalIdentifier(
     }
   }
   return (state) => {
-    const context = state.directRootContext!
+    const context = (state as DirectLocalEvalState).rootContext
     if (!Object.prototype.hasOwnProperty.call(context, name)) {
       throw new JSEvalError(`'${name}' is not defined`, node)
     }
@@ -119,11 +122,11 @@ export function compileDirectLocalIdentifier(
   }
 }
 
-export function assignIdentifier(name: string, value: unknown, state: EvalState): unknown {
-  if (name === 'undefined' || BLOCKED_GLOBALS.has(name)) {
-    throw new JSEvalError(`Access to '${name}' is not permitted`)
+export function assignIdentifier(node: Identifier, value: unknown, state: EvalState): unknown {
+  if (node.name === 'undefined' || BLOCKED_GLOBALS.has(node.name)) {
+    throw new JSEvalError(`Access to '${node.name}' is not permitted`, node)
   }
-  return assignScopeBinding(ensureEvalScope(state), name, value)
+  return assignScopeBinding(ensureEvalScope(state), node.name, value, node)
 }
 
 export function isAssignmentShortCircuited(

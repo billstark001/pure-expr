@@ -19,8 +19,9 @@ import {
 } from './types.js'
 
 function defineArrowBinding(state: EvalState, name: string, value: unknown): void {
-  if (state.directLocals) state.directLocals[name] = value
-  else defineLocalBinding(state.scope!, name, value)
+  if (state.kind === 'direct-local') state.locals[name] = value
+  else if (state.kind === 'scoped') defineLocalBinding(state.scope, name, value)
+  else throw new JSEvalError('Arrow bindings require a local evaluation scope')
 }
 
 export function createPureExprArrowFunction(

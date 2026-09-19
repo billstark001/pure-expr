@@ -151,7 +151,7 @@ const environment = createEvaluationEnvironment({
 evaluate('score += 2', environment, { writes: 'commit' });
 ```
 
-Environment lookup order is lexical locals, variables, data, then capabilities. Data follows `dataPolicy` or the evaluator's `contextPolicy`; capabilities default to referenced host objects. Variables are explicit live state and are not snapshotted or frozen.
+Environment lookup order is lexical locals, the current evaluation's overlay, variables, data, then capabilities. Data follows `dataPolicy` or the evaluator's `contextPolicy`; capabilities default to referenced host objects. Variables are explicit live state and are not snapshotted or frozen.
 
 | Write mode | Behavior |
 | --- | --- |
@@ -169,6 +169,8 @@ pending.value; // 3
 pending.changes; // ReadonlyMap { 'score' => 3 }
 pending.commit(); // storyVariables.score is now 3
 ```
+
+Transaction commits restore earlier writes if a later `BindingStore.set` fails. Custom stores that can apply a batch atomically should implement the optional `applyChanges(changes)` method; `createBindingStore` provides it automatically.
 
 Only identifier bindings are assignable; member assignment such as `object.value = 1`, update operators, and `delete` remain unsupported. Lexical arrow parameters can be reassigned without writing the root context. Template rendering supports `deny`, `overlay`, and `commit`; transaction mode is rejected because placeholders are evaluated separately.
 

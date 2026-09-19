@@ -156,6 +156,25 @@ describe('mutable binding stores', () => {
     expect(context.score).toBe(1)
   })
 
+  test.each(['default', 'performance'] as const)(
+    '%s overlay writes cross arrow call frames within one evaluation',
+    (functionMode) => {
+      const context = { score: 1 }
+      expect(
+        evaluate('(() => score = 2)(), score', context, { writes: 'overlay', functionMode }),
+      ).toBe(2)
+      expect(context.score).toBe(1)
+    },
+  )
+
+  test('escaped arrows retain their evaluation overlay', () => {
+    const context = { score: 1 }
+    const read = evaluate('score = 2, () => score', context, { writes: 'overlay' }) as () => number
+
+    expect(read()).toBe(2)
+    expect(context.score).toBe(1)
+  })
+
   test('commit writes update plain record inputs', () => {
     const context = { score: 1 }
     expect(evaluate('score += 2', context, { writes: 'commit' })).toBe(3)
@@ -225,6 +244,72 @@ describe('mutable binding stores', () => {
     expect(transaction.status).toBe('committed')
     expect(context).toEqual({ score: 3, bonus: 4 })
     expect(context).not.toHaveProperty('injected')
+  })
+
+  test('failed transaction commits restore changes already written to a binding store', () => {
+    const values = new Map<string, unknown>([
+      ['first', 1],
+      ['second', 1],
+    ])
+    const variables = {
+      has: (name: string) => values.has(name),
+      get: (name: string) => values.get(name),
+      set: (name: string, value: unknown) => {
+        if (name === 'second') throw new Error('second rejected')
+        values.set(name, value)
+      },
+      delete: (name: string) => values.delete(name),
+    }
+    const environment = createEvaluationEnvironment({ variables })
+    const transaction = evaluate('first = 2, second = 2', environment, {
+      writes: 'transaction',
+    })
+
+    expect(() => transaction.commit()).toThrow('second rejected')
+    expect(Object.fromEntries(values)).toEqual({ first: 1, second: 1 })
+    expect(transaction.status).toBe('pending')
+    transaction.rollback()
+  })
+
+  test('transaction commits reject unrecoverable new bindings before writing', () => {
+    const values = new Map<string, unknown>([['existing', 1]])
+    const variables = {
+      has: (name: string) => values.has(name),
+      get: (name: string) => values.get(name),
+      set: (name: string, value: unknown) => values.set(name, value),
+    }
+    const environment = createEvaluationEnvironment({ variables })
+    const transaction = evaluate('existing = 2, created = 3', environment, {
+      writes: 'transaction',
+    })
+
+    expect(() => transaction.commit()).toThrow('does not support deletion')
+    expect(Object.fromEntries(values)).toEqual({ existing: 1 })
+  })
+
+  test('custom binding stores can provide atomic batch application', () => {
+    const values = new Map<string, unknown>([
+      ['first', 1],
+      ['second', 1],
+    ])
+    let applyCalls = 0
+    const variables = {
+      has: (name: string) => values.has(name),
+      get: (name: string) => values.get(name),
+      set: (name: string, value: unknown) => values.set(name, value),
+      applyChanges: (changes: ReadonlyMap<string, unknown>) => {
+        applyCalls += 1
+        for (const [name, value] of changes) values.set(name, value)
+      },
+    }
+    const environment = createEvaluationEnvironment({ variables })
+    const transaction = evaluate('first = 2, second = 3', environment, {
+      writes: 'transaction',
+    })
+
+    transaction.commit()
+    expect(applyCalls).toBe(1)
+    expect(Object.fromEntries(values)).toEqual({ first: 2, second: 3 })
   })
 
   test('transactions can be rolled back and failed evaluations never write through', () => {

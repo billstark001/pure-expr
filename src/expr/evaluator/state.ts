@@ -1,33 +1,28 @@
 import type { AstNode, ExpressionNode } from '../node-types.js'
-import { createLocalScope, createRootScope, createRuntimeEnvironment } from './context.js'
+import { createLocalScope, createRootScope } from './context.js'
 import {
-  EVALUATION_SCOPE_BRAND,
+  type DirectEvalState,
+  type DirectLocalEvalState,
   type EvalState,
-  type EvaluationInput,
   type EvaluationScope,
   type ExecutionBudget,
   JSEvalError,
   type JSEvalOptions,
+  type ScopedEvalState,
 } from './types.js'
 
-export function createEvalState(
-  input: EvaluationScope | EvaluationInput,
+export function createScopedEvalState(
+  scope: EvaluationScope,
   opts: Readonly<JSEvalOptions>,
   sharedBudget?: ExecutionBudget,
-): EvalState {
-  const scope = isEvaluationScope(input)
-    ? input
-    : createRootScope(createRuntimeEnvironment([input], opts))
-  const state: EvalState = {
+): ScopedEvalState {
+  const state: ScopedEvalState = {
+    kind: 'scoped',
     scope,
     callDepth: 0,
     steps: 0,
     topics: [],
     opts,
-  }
-  if (!scope.parent && scope.environment.directContext) {
-    state.directLocals = scope.locals
-    state.directRootContext = scope.environment.directContext
   }
   if (sharedBudget) state.budget = sharedBudget
   return state
@@ -37,33 +32,14 @@ export function createDirectEvalState(
   context: Readonly<Record<string, unknown>>,
   opts: Readonly<JSEvalOptions>,
   sharedBudget?: ExecutionBudget,
-): EvalState {
-  const state: EvalState = {
-    directContext: context,
+): DirectEvalState {
+  const state: DirectEvalState = {
+    kind: 'direct',
+    context,
     callDepth: 0,
     steps: 0,
     topics: [],
     opts,
-  }
-  if (sharedBudget) state.budget = sharedBudget
-  return state
-}
-
-export function createScopedEvalState(
-  scope: EvaluationScope,
-  opts: Readonly<JSEvalOptions>,
-  sharedBudget?: ExecutionBudget,
-): EvalState {
-  const state: EvalState = {
-    scope,
-    callDepth: 0,
-    steps: 0,
-    topics: [],
-    opts,
-  }
-  if (!scope.parent && scope.environment.directContext) {
-    state.directLocals = scope.locals
-    state.directRootContext = scope.environment.directContext
   }
   if (sharedBudget) state.budget = sharedBudget
   return state
@@ -74,11 +50,15 @@ export function createDirectLocalEvalState(
   environment: EvaluationScope['environment'],
   opts: Readonly<JSEvalOptions>,
   sharedBudget: ExecutionBudget,
-): EvalState {
+): DirectLocalEvalState {
+  if (!environment.directContext) {
+    throw new JSEvalError('Direct local evaluation requires a direct root context')
+  }
   return {
-    directLocals: locals,
-    directRootContext: environment.directContext,
-    deferredEnvironment: environment,
+    kind: 'direct-local',
+    locals,
+    rootContext: environment.directContext,
+    environment,
     budget: sharedBudget,
     callDepth: 0,
     steps: 0,
@@ -88,28 +68,22 @@ export function createDirectLocalEvalState(
 }
 
 export function ensureEvalScope(state: EvalState): EvaluationScope {
-  if (state.scope) return state.scope
-  if (state.directLocals) {
-    const scope = createLocalScope(state.deferredEnvironment!, state.directLocals)
-    state.scope = scope
+  if (state.kind === 'scoped') return state.scope
+  if (state.materializedScope) return state.materializedScope
+  if (state.kind === 'direct-local') {
+    const scope = createLocalScope(state.environment, state.locals)
+    state.materializedScope = scope
     return scope
   }
   const environment = {
-    data: [state.directContext!],
+    data: [state.context],
     capabilities: [],
-    directContext: state.directContext!,
+    directContext: state.context,
     writes: 'deny' as const,
   }
   const scope = createRootScope(environment)
-  state.scope = scope
+  state.materializedScope = scope
   return scope
-}
-
-function isEvaluationScope(input: EvaluationScope | EvaluationInput): input is EvaluationScope {
-  return (
-    ((typeof input === 'object' && input !== null) || typeof input === 'function') &&
-    (input as Partial<EvaluationScope>)[EVALUATION_SCOPE_BRAND] === true
-  )
 }
 
 export function consumeStep(state: EvalState, node: AstNode, amount = 1): void {

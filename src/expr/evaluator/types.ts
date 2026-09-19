@@ -1,4 +1,4 @@
-import type { ArrowFunctionExpression, AstNode, ExpressionNode } from '../node-types.js'
+import type { AstNode, ExpressionNode } from '../node-types.js'
 
 /** Error raised while evaluating an expression AST. */
 export class JSEvalError extends Error {
@@ -41,6 +41,8 @@ export interface BindingStore {
   get(name: string): unknown
   set(name: string, value: unknown): void
   delete?(name: string): boolean
+  /** Apply a complete transaction. Implementations must either apply every change or none. */
+  applyChanges?(changes: ReadonlyMap<string, unknown>): void
 }
 
 export interface EvaluationEnvironmentInit {
@@ -144,22 +146,39 @@ export interface CompiledArrowRuntime {
   expectedArgumentCount: number
 }
 
-export interface EvalState extends ExecutionBudget {
-  scope?: EvaluationScope
-  directContext?: Readonly<Record<string, unknown>>
-  directLocals?: Record<string, unknown>
-  directRootContext?: Readonly<Record<string, unknown>>
-  deferredEnvironment?: RuntimeEnvironment
+interface EvalStateBase extends ExecutionBudget {
   budget?: ExecutionBudget
   topics: unknown[]
   opts: Readonly<JSEvalOptions>
 }
+
+export interface ScopedEvalState extends EvalStateBase {
+  readonly kind: 'scoped'
+  readonly scope: EvaluationScope
+}
+
+export interface DirectEvalState extends EvalStateBase {
+  readonly kind: 'direct'
+  readonly context: Readonly<Record<string, unknown>>
+  materializedScope?: EvaluationScope
+}
+
+export interface DirectLocalEvalState extends EvalStateBase {
+  readonly kind: 'direct-local'
+  readonly locals: Record<string, unknown>
+  readonly rootContext: Readonly<Record<string, unknown>>
+  readonly environment: RuntimeEnvironment
+  materializedScope?: EvaluationScope
+}
+
+export type EvalState = ScopedEvalState | DirectEvalState | DirectLocalEvalState
 
 export interface RuntimeEnvironment {
   data: ReadonlyArray<Readonly<Record<string, unknown>>>
   capabilities: ReadonlyArray<Readonly<Record<string, unknown>>>
   directContext?: Readonly<Record<string, unknown>>
   variables?: BindingStore
+  overlay?: Record<string, unknown>
   writes: ContextWriteMode
   transaction?: TransactionBindingStore
 }
@@ -190,11 +209,6 @@ export const EMPTY_CONTEXT: Readonly<Record<string, unknown>> = Object.freeze({}
 export const EMPTY_OPTS: Readonly<JSEvalOptions> = Object.freeze({})
 export const UNINITIALIZED_ARROW_PARAM = Symbol('pure-expr.uninitialized-arrow-param')
 export const PURE_EXPR_ARROW_BRAND = Symbol('pure-expr.arrow-function')
-export const PERFORMANCE_ARROW_RUNTIME_CACHE = new WeakMap<
-  ArrowFunctionExpression,
-  CompiledArrowRuntime
->()
-
 export const DEFAULT_CONTEXT_POLICY: Readonly<ContextPolicy> = Object.freeze({
   input: 'plain-only',
   isolation: 'reference',

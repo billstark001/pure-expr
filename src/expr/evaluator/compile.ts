@@ -44,7 +44,6 @@ import {
   type EvalState,
   type JSCallable,
   JSEvalError,
-  PERFORMANCE_ARROW_RUNTIME_CACHE,
 } from './types.js'
 
 export interface CompileRuntimeOptions {
@@ -63,6 +62,7 @@ const CHAIN_SHORT_CIRCUIT = Symbol('pure-expr.compiled-chain-short-circuit')
 
 export function createCompileRuntime(options: CompileRuntimeOptions): CompileRuntime {
   const { evalArrowFunction } = options
+  const arrowRuntimeCache = new WeakMap<ArrowFunctionExpression, CompiledArrowRuntime>()
 
   function withCompiledStep(
     node: ExpressionNode,
@@ -76,7 +76,7 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
   }
 
   function getCompiledArrowRuntime(node: ArrowFunctionExpression): CompiledArrowRuntime {
-    const cached = PERFORMANCE_ARROW_RUNTIME_CACHE.get(node)
+    const cached = arrowRuntimeCache.get(node)
     if (cached) return cached
     const compiled = {
       body: compileNode(node.body),
@@ -87,7 +87,7 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
       boundNames: collectArrowBoundNames(node.params),
       expectedArgumentCount: getArrowExpectedArgumentCount(node.params),
     } satisfies CompiledArrowRuntime
-    PERFORMANCE_ARROW_RUNTIME_CACHE.set(node, compiled)
+    arrowRuntimeCache.set(node, compiled)
     return compiled
   }
 
@@ -128,7 +128,7 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
           if (isAssignmentShortCircuited(node.operator, current)) return current
           const rightValue = right(state)
           const value = applyAssignmentOperator(node.operator, current, rightValue)
-          return assignIdentifier(node.left.name, value, state)
+          return assignIdentifier(node.left, value, state)
         })
       }
       case 'UnaryExpression': {

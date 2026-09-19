@@ -47,7 +47,6 @@ import {
   consumeStep,
   createDirectEvalState,
   createDirectLocalEvalState,
-  createEvalState,
   createScopedEvalState,
   ensureEvalScope,
 } from './evaluator/state.js'
@@ -62,6 +61,7 @@ import {
   type EvalState,
   type EvaluationEnvironment,
   type EvaluationInput,
+  type EvaluationScope,
   type JSCallable,
   JSEvalError,
   type JSEvalOptions,
@@ -84,7 +84,6 @@ import type {
 
 export { createBindingStore, createEvaluationEnvironment } from './evaluator/context.js'
 export { inheritedPropertyAccess, ownPropertyAccess } from './evaluator/operations.js'
-export { createEvalState } from './evaluator/state.js'
 export {
   allowAllCalls,
   type BindingStore,
@@ -137,12 +136,11 @@ export function evalNode(node: ExpressionNode, state: EvalState): unknown {
     case 'ArrowFunctionExpression':
       return evalArrowFunction(node, state)
     case 'AssignmentExpression': {
-      const name = node.left.name
       const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
       if (isAssignmentShortCircuited(node.operator, current)) return current
       const right = evalNode(node.right, state)
       const value = applyAssignmentOperator(node.operator, current, right)
-      return assignIdentifier(name, value, state)
+      return assignIdentifier(node.left, value, state)
     }
     case 'UnaryExpression':
       return evalUnary(node, state)
@@ -294,7 +292,7 @@ function evalArrowFunctionPerformance(node: ArrowFunctionExpression, state: Eval
   }, runtime.expectedArgumentCount)
 }
 
-function canDeferArrowScope(scope: NonNullable<EvalState['scope']>): boolean {
+function canDeferArrowScope(scope: EvaluationScope): boolean {
   return !scope.parent && !scope.hasLocalBindings && !!scope.environment.directContext
 }
 
@@ -305,49 +303,23 @@ function createArrowLocals(names: readonly string[]): Record<string, unknown> {
 }
 
 const { compileNode, getCompiledArrowRuntime } = createCompileRuntime({ evalArrowFunction })
-const directLocalArrowRuntime = createCompileRuntime({
-  evalArrowFunction,
-  resolveIdentifier: resolveDirectLocalIdentifier,
-})
 const directLocalArrowBodyCache = new WeakMap<
   ArrowFunctionExpression,
   (state: EvalState) => unknown
 >()
-const arrowAssignmentCache = new WeakMap<ArrowFunctionExpression, boolean>()
 
 function getDirectLocalArrowBody(node: ArrowFunctionExpression): (state: EvalState) => unknown {
   let body = directLocalArrowBodyCache.get(node)
   if (!body) {
-    if (arrowContainsAssignment(node)) {
-      body = directLocalArrowRuntime.compileNode(node.body)
-    } else {
-      const boundNames = new Set(collectArrowBoundNames(node.params))
-      body = createCompileRuntime({
-        evalArrowFunction,
-        compileIdentifier: (identifier) => compileDirectLocalIdentifier(identifier, boundNames),
-      }).compileNode(node.body)
-    }
+    const boundNames = new Set(collectArrowBoundNames(node.params))
+    body = createCompileRuntime({
+      evalArrowFunction,
+      compileIdentifier: (identifier) => compileDirectLocalIdentifier(identifier, boundNames),
+      resolveIdentifier: resolveDirectLocalIdentifier,
+    }).compileNode(node.body)
     directLocalArrowBodyCache.set(node, body)
   }
   return body
-}
-
-function arrowContainsAssignment(node: ArrowFunctionExpression): boolean {
-  const cached = arrowAssignmentCache.get(node)
-  if (cached !== undefined) return cached
-  const visit = (value: unknown): boolean => {
-    if (!value || typeof value !== 'object') return false
-    if (Array.isArray(value)) return value.some(visit)
-    const record = value as Record<string, unknown>
-    if (record.type === 'AssignmentExpression') return true
-    for (const [key, child] of Object.entries(record)) {
-      if (key !== 'loc' && visit(child)) return true
-    }
-    return false
-  }
-  const result = visit(node)
-  arrowAssignmentCache.set(node, result)
-  return result
 }
 
 function evalUnary(node: UnaryExpression, state: EvalState): unknown {
@@ -680,7 +652,7 @@ export class JSEvaluator {
     }
     const environment = this.createEnvironment(context)
     return completeEvaluation(
-      evalNode(node, createEvalState(createRootScope(environment), this.resolvedOpts)),
+      evalNode(node, createScopedEvalState(createRootScope(environment), this.resolvedOpts)),
       environment,
     )
   }
@@ -707,7 +679,7 @@ export class JSEvaluator {
       const environment = this.createEnvironment(context)
       execute ??= compileGeneral()
       return completeEvaluation(
-        execute(createEvalState(createRootScope(environment), this.resolvedOpts)),
+        execute(createScopedEvalState(createRootScope(environment), this.resolvedOpts)),
         environment,
       )
     }

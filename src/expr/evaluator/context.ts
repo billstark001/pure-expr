@@ -1,4 +1,4 @@
-import type { ExpressionNode } from '../node-types.js'
+import type { AstNode, ExpressionNode } from '../node-types.js'
 import { BLOCKED_PROPS } from './security.js'
 import { consumeStep } from './state.js'
 import {
@@ -201,7 +201,7 @@ export function prepareReferenceContext(
 export function createBindingStore(
   values: Record<string, unknown> = createNullPrototypeRecord(),
 ): BindingStore {
-  return {
+  const store: BindingStore = {
     has: (name) => Object.prototype.hasOwnProperty.call(values, name),
     get: (name) => values[name],
     set: (name, value) => {
@@ -209,6 +209,8 @@ export function createBindingStore(
     },
     delete: (name) => delete values[name],
   }
+  store.applyChanges = (changes) => applyBindingChangesWithRollback(store, changes)
+  return store
 }
 
 export function createEvaluationEnvironment(
@@ -259,7 +261,8 @@ function createTransactionStore(
     },
     commit() {
       assertPending()
-      for (const [name, value] of pending) commitTarget.set(name, value)
+      if (commitTarget.applyChanges) commitTarget.applyChanges(pending)
+      else applyBindingChangesWithRollback(commitTarget, pending)
       status = 'committed'
     },
     rollback() {
@@ -267,6 +270,67 @@ function createTransactionStore(
       pending.clear()
       status = 'rolled-back'
     },
+  }
+}
+
+interface BindingSnapshot {
+  readonly existed: boolean
+  readonly name: string
+  readonly value: unknown
+}
+
+function applyBindingChangesWithRollback(
+  target: BindingStore,
+  changes: ReadonlyMap<string, unknown>,
+): void {
+  if (changes.size === 1) {
+    const first = changes.entries().next().value
+    if (first) target.set(first[0], first[1])
+    return
+  }
+
+  const snapshots: BindingSnapshot[] = []
+  for (const name of changes.keys()) {
+    const existed = target.has(name)
+    if (!existed && !target.delete) {
+      throw new JSEvalError(
+        `Binding store cannot atomically create '${name}' because it does not support deletion`,
+      )
+    }
+    snapshots.push({ existed, name, value: existed ? target.get(name) : undefined })
+  }
+
+  let attempted = 0
+  try {
+    for (const [name, value] of changes) {
+      attempted += 1
+      target.set(name, value)
+    }
+  } catch (commitError) {
+    const rollbackErrors: unknown[] = []
+    for (let index = attempted - 1; index >= 0; index -= 1) {
+      const snapshot = snapshots[index]
+      try {
+        const existsNow = target.has(snapshot.name)
+        const valueNow = existsNow ? target.get(snapshot.name) : undefined
+        if (existsNow === snapshot.existed && (!existsNow || Object.is(valueNow, snapshot.value))) {
+          continue
+        }
+        if (snapshot.existed) target.set(snapshot.name, snapshot.value)
+        else if (!target.delete?.(snapshot.name)) {
+          throw new JSEvalError(`Failed to remove newly created binding '${snapshot.name}'`)
+        }
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError)
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [commitError, ...rollbackErrors],
+        'Transaction commit failed and could not be fully rolled back',
+      )
+    }
+    throw commitError
   }
 }
 
@@ -310,6 +374,7 @@ export function createRuntimeEnvironment(
   }
 
   const writes = opts.writes ?? DEFAULT_CONTEXT_WRITE_MODE
+  const overlay = writes === 'overlay' ? createNullPrototypeRecord() : undefined
   let transaction: TransactionBindingStore | undefined
   if (!variables && legacyWriteTarget && (writes === 'commit' || writes === 'transaction')) {
     const target = recordStore(legacyWriteTarget)
@@ -333,7 +398,7 @@ export function createRuntimeEnvironment(
     throw new JSEvalError(`${writes} writes require a variable binding store`)
   }
 
-  return { data, capabilities, variables, writes, transaction }
+  return { data, capabilities, variables, overlay, writes, transaction }
 }
 
 export function completeEvaluation(
@@ -398,16 +463,17 @@ export function defineLocalBinding(scope: EvaluationScope, name: string, value: 
   scope.hasLocalBindings = true
 }
 
-export function resolveScopeBinding(scope: EvaluationScope, name: string): unknown {
+export function resolveScopeBinding(scope: EvaluationScope, name: string, node: AstNode): unknown {
   for (let current: EvaluationScope | undefined = scope; current; current = current.parent) {
     if (Object.prototype.hasOwnProperty.call(current.locals, name)) return current.locals[name]
   }
-  const { variables, data, capabilities } = scope.environment
+  const { overlay, variables, data, capabilities } = scope.environment
+  if (overlay && Object.prototype.hasOwnProperty.call(overlay, name)) return overlay[name]
   if (variables?.has(name)) return variables.get(name)
   const directContext = scope.environment.directContext
   if (directContext) {
     if (Object.prototype.hasOwnProperty.call(directContext, name)) return directContext[name]
-    throw new JSEvalError(`'${name}' is not defined`)
+    throw new JSEvalError(`'${name}' is not defined`, node)
   }
   for (let index = data.length - 1; index >= 0; index -= 1) {
     if (Object.prototype.hasOwnProperty.call(data[index], name)) return data[index][name]
@@ -417,10 +483,15 @@ export function resolveScopeBinding(scope: EvaluationScope, name: string): unkno
       return capabilities[index][name]
     }
   }
-  throw new JSEvalError(`'${name}' is not defined`)
+  throw new JSEvalError(`'${name}' is not defined`, node)
 }
 
-export function assignScopeBinding(scope: EvaluationScope, name: string, value: unknown): unknown {
+export function assignScopeBinding(
+  scope: EvaluationScope,
+  name: string,
+  value: unknown,
+  node: AstNode,
+): unknown {
   for (let current: EvaluationScope | undefined = scope; current; current = current.parent) {
     if (Object.prototype.hasOwnProperty.call(current.locals, name)) {
       current.locals[name] = value
@@ -429,20 +500,19 @@ export function assignScopeBinding(scope: EvaluationScope, name: string, value: 
   }
 
   if (BLOCKED_PROPS.has(name)) {
-    throw new JSEvalError(`Context binding '${name}' is not writable`)
+    throw new JSEvalError(`Context binding '${name}' is not writable`, node)
   }
 
   const { environment } = scope
   if (environment.writes === 'deny') {
-    throw new JSEvalError('Context writes are not enabled')
+    throw new JSEvalError('Context writes are not enabled', node)
   }
   if (environment.writes === 'overlay') {
-    scope.locals[name] = value
-    scope.hasLocalBindings = true
+    environment.overlay![name] = value
     return value
   }
   if (!environment.variables) {
-    throw new JSEvalError('Context writes require a variable binding store')
+    throw new JSEvalError('Context writes require a variable binding store', node)
   }
   environment.variables.set(name, value)
   return value
