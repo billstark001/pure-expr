@@ -1,5 +1,8 @@
 import type { JSToken, JSTokenKind } from './lexer/index.js'
-import type { ExpressionNode as PublicExpressionNode } from './node-types.js'
+import type {
+  BindingPattern as PublicBindingPattern,
+  ExpressionNode as PublicExpressionNode,
+} from './node-types.js'
 import {
   BINARY_OPERATOR_INFO,
   getInfixOperatorInfo,
@@ -16,8 +19,14 @@ import {
   isArrowFunctionStart as detectArrowFunctionStart,
   type ParserBindingDelegate,
   parseArrowFunction as parseArrowFunctionWithBindings,
+  parseBindingPattern as parseBindingPatternWithDelegate,
 } from './parser/bindings.js'
-import { type JSLocationOptions, JSParseError, type JSParserOptions } from './parser/errors.js'
+import {
+  JSIncompleteParseError,
+  type JSLocationOptions,
+  JSParseError,
+  type JSParserOptions,
+} from './parser/errors.js'
 import { FORBIDDEN_PREFIX_IDENTIFIERS } from './parser/grammar.js'
 import type {
   ArrowFunctionExpression,
@@ -26,6 +35,8 @@ import type {
   ChainExpression,
   ConditionalExpression,
   ExpressionNode,
+  AssignmentPattern as InternalAssignmentPattern,
+  BindingPattern as InternalBindingPattern,
   LogicalExpression,
   MemberExpression,
   PipelineExpression,
@@ -38,18 +49,37 @@ import type {
   UnaryExpression,
   UpdateExpression,
 } from './parser/node-types.js'
-import { parseStringValue } from './parser/shared.js'
+import { parseStringValue, propertyKeyFromToken } from './parser/shared.js'
 import { buildTemplateAstNode } from './parser/template.js'
-import { assertValidLogicalMixing, validateTopicUsage } from './parser/validation.js'
+import {
+  assertValidLogicalMixing,
+  validateBindingTopicUsage,
+  validateTopicUsage,
+} from './parser/validation.js'
 
 export type { JSLocationOptions, JSParserOptions } from './parser/errors.js'
-export { JSParseError } from './parser/errors.js'
+export { JSIncompleteParseError, JSParseError } from './parser/errors.js'
+
+export interface JSExpressionPrefixResult {
+  expression: PublicExpressionNode
+  end: number
+  nextToken?: JSToken
+  rolledBack: boolean
+}
+
+export interface JSBindingPrefixResult {
+  pattern: PublicBindingPattern
+  end: number
+  nextToken?: JSToken
+  rolledBack: boolean
+}
 
 // #region Public parser
 
 /** Pratt-style parser that converts tokens into expression AST nodes. */
 export class JSExpressionParser {
   private pos = 0
+  private rolledBack = false
   private readonly parenthesizedNodes = new WeakSet<ExpressionNode>()
   private readonly src: string
 
@@ -64,13 +94,40 @@ export class JSExpressionParser {
   // #region Entry points
 
   parse(): PublicExpressionNode {
-    return finalizeAst(this.parseInternal(), this.src, this.opts.locations)
+    return finalizeAst(this.parseInternal(true, false), this.src, this.opts.locations)
   }
 
-  private parseInternal(): ExpressionNode {
+  parsePrefix(incomplete: 'error' | 'rollback' = 'error'): JSExpressionPrefixResult {
+    this.rolledBack = false
+    const node = this.parseInternal(false, incomplete === 'rollback')
+    return {
+      expression: finalizeAst(node, this.src, this.opts.locations),
+      end: this.lastEnd(),
+      nextToken: this.peek(),
+      rolledBack: this.rolledBack,
+    }
+  }
+
+  parseBindingPattern(): PublicBindingPattern {
+    const node = this.parseBindingInternal(true, false)
+    return finalizeAst(node, this.src, this.opts.locations)
+  }
+
+  parseBindingPrefix(incomplete: 'error' | 'rollback' = 'error'): JSBindingPrefixResult {
+    this.rolledBack = false
+    const node = this.parseBindingInternal(false, incomplete === 'rollback')
+    return {
+      pattern: finalizeAst(node, this.src, this.opts.locations),
+      end: this.lastEnd(),
+      nextToken: this.peek(),
+      rolledBack: this.rolledBack,
+    }
+  }
+
+  private parseInternal(requireComplete: boolean, rollbackOnIncomplete: boolean): ExpressionNode {
     if (this.tokens.length === 0) throw new JSParseError('Empty expression')
-    const node = this.parseSequenceExpr()
-    if (this.pos < this.tokens.length) {
+    const node = this.parseSequenceExpr(rollbackOnIncomplete)
+    if (requireComplete && this.pos < this.tokens.length) {
       const t = this.peek()!
       throw new JSParseError(`Unexpected token '${t.value}' after expression`, t, this.src)
     }
@@ -78,16 +135,63 @@ export class JSExpressionParser {
     return node
   }
 
+  private parseBindingInternal(
+    requireComplete: boolean,
+    rollbackOnIncomplete: boolean,
+  ): InternalBindingPattern {
+    if (this.tokens.length === 0) throw new JSParseError('Empty binding pattern')
+    let node = parseBindingPatternWithDelegate(this.createBindingDelegate())
+    if (this.peek()?.kind === 'op' && this.peek()!.value === '=') {
+      const continuationStart = this.pos
+      this.advance()
+      try {
+        node = {
+          type: 'AssignmentPattern',
+          left: node,
+          right: this.parseAssignmentExpr(),
+          start: node.start,
+          end: this.lastEnd(),
+        } satisfies InternalAssignmentPattern
+      } catch (error) {
+        if (rollbackOnIncomplete && error instanceof JSIncompleteParseError) {
+          this.rollbackTo(continuationStart)
+        } else {
+          throw error
+        }
+      }
+    }
+    if (requireComplete && this.pos < this.tokens.length) {
+      const token = this.peek()!
+      throw new JSParseError(
+        `Unexpected token '${token.value}' after binding pattern`,
+        token,
+        this.src,
+      )
+    }
+    validateBindingTopicUsage(node, this.parenthesizedNodes, this.src)
+    return node
+  }
+
   // #endregion
 
   // #region Expression parsing
 
-  private parseSequenceExpr(): ExpressionNode {
-    let left = this.parseAssignmentExpr()
+  private parseSequenceExpr(rollbackOnIncomplete = false): ExpressionNode {
+    let left = this.parseAssignmentExpr(rollbackOnIncomplete)
 
     while (this.peek()?.kind === 'op' && this.peek()!.value === ',') {
+      const continuationStart = this.pos
       this.advance()
-      const right = this.parseAssignmentExpr()
+      let right: ExpressionNode
+      try {
+        right = this.parseAssignmentExpr()
+      } catch (error) {
+        if (rollbackOnIncomplete && error instanceof JSIncompleteParseError) {
+          this.rollbackTo(continuationStart)
+          break
+        }
+        throw error
+      }
       left = {
         type: 'SequenceExpression',
         expressions:
@@ -100,32 +204,61 @@ export class JSExpressionParser {
     return left
   }
 
-  private parseAssignmentExpr(): ExpressionNode {
-    if (this.isArrowFunctionStart()) return this.parseArrowFunction()
-    if (!this.opts.allowAssignments) return this.parsePipeExpr()
-    const left = this.parsePipeExpr()
+  private parseAssignmentExpr(rollbackOnIncomplete = false): ExpressionNode {
+    if (this.isArrowFunctionStart()) {
+      if (!rollbackOnIncomplete) return this.parseArrowFunction()
+      const continuationStart = this.pos
+      try {
+        return this.parseArrowFunction()
+      } catch (error) {
+        if (!(error instanceof JSIncompleteParseError)) throw error
+        this.rollbackTo(continuationStart)
+        return this.parsePipeExpr()
+      }
+    }
+    if (!this.opts.allowAssignments) return this.parsePipeExpr(rollbackOnIncomplete)
+    const left = this.parsePipeExpr(rollbackOnIncomplete)
     const assignment = this.peek()
     if (assignment?.kind !== 'op' || !isAssignmentOperator(assignment.value)) {
       return left
     }
     this.assertWritableTarget(left, assignment, 'assigned')
+    const continuationStart = this.pos
     this.advance()
-    return {
-      type: 'AssignmentExpression',
-      operator: assignment.value,
-      left,
-      right: this.parseAssignmentExpr(),
-      start: left.start,
-      end: this.lastEnd(),
+    try {
+      return {
+        type: 'AssignmentExpression',
+        operator: assignment.value,
+        left,
+        right: this.parseAssignmentExpr(),
+        start: left.start,
+        end: this.lastEnd(),
+      }
+    } catch (error) {
+      if (rollbackOnIncomplete && error instanceof JSIncompleteParseError) {
+        this.rollbackTo(continuationStart)
+        return left
+      }
+      throw error
     }
   }
 
-  private parsePipeExpr(): ExpressionNode {
-    let left = this.parseConditionalExpr()
+  private parsePipeExpr(rollbackOnIncomplete = false): ExpressionNode {
+    let left = this.parseConditionalExpr(rollbackOnIncomplete)
 
     while (this.peek()?.kind === 'op' && this.peek()!.value === '|>') {
+      const continuationStart = this.pos
       const pipe = this.advance()!
-      const right = this.parseAssignmentExpr()
+      let right: ExpressionNode
+      try {
+        right = this.parseAssignmentExpr()
+      } catch (error) {
+        if (rollbackOnIncomplete && error instanceof JSIncompleteParseError) {
+          this.rollbackTo(continuationStart)
+          break
+        }
+        throw error
+      }
       left = {
         type: 'PipelineExpression',
         left,
@@ -138,192 +271,160 @@ export class JSExpressionParser {
     return left
   }
 
-  private parseConditionalExpr(): ExpressionNode {
-    const test = this.parseShortCircuitExpr()
+  private parseConditionalExpr(rollbackOnIncomplete = false): ExpressionNode {
+    const test = this.parseShortCircuitExpr(rollbackOnIncomplete)
     if (this.peek()?.kind !== 'op' || this.peek()!.value !== '?') return test
 
+    const continuationStart = this.pos
     this.advance()
-    const consequent = this.parseAssignmentExpr()
-    this.expectOp(':', 'Expected `:` in ternary expression')
-    const alternate = this.parseAssignmentExpr()
+    try {
+      const consequent = this.parseAssignmentExpr()
+      this.expectOp(':', 'Expected `:` in ternary expression')
+      const alternate = this.parseAssignmentExpr()
 
-    return {
-      type: 'ConditionalExpression',
-      test,
-      consequent,
-      alternate,
-      start: test.start,
-      end: this.lastEnd(),
-    } satisfies ConditionalExpression
+      return {
+        type: 'ConditionalExpression',
+        test,
+        consequent,
+        alternate,
+        start: test.start,
+        end: this.lastEnd(),
+      } satisfies ConditionalExpression
+    } catch (error) {
+      if (rollbackOnIncomplete && error instanceof JSIncompleteParseError) {
+        this.rollbackTo(continuationStart)
+        return test
+      }
+      throw error
+    }
   }
 
-  private parseShortCircuitExpr(): ExpressionNode {
-    return this.parseExpr(PREC.NULLCOAL)
+  private parseShortCircuitExpr(rollbackOnIncomplete = false): ExpressionNode {
+    return this.parseExpr(PREC.NULLCOAL, rollbackOnIncomplete)
   }
 
   // parseExpr(minPrec) — standard Pratt loop
-  private parseExpr(minPrec: number): ExpressionNode {
+  private parseExpr(minPrec: number, rollbackOnIncomplete = false): ExpressionNode {
     let left = this.parsePrimary()
 
     for (;;) {
       const t = this.peek()
       if (!t) break
+      const continuationStart = this.pos
 
-      // ── Postfix: member access, call, optional chaining ──────────
-      if (t.kind === 'op' && t.value === '.' && PREC.POSTFIX >= minPrec) {
-        this.advance()
-        const prop = this.expect('identifier', 'Expected property name after .')
-        left = this.appendMember(
-          left,
-          { type: 'Identifier', name: prop.value, start: prop.start, end: prop.end },
-          false,
-          false,
-          prop.end,
-        )
-        continue
-      }
-
-      if (t.kind === 'op' && t.value === '?.' && PREC.POSTFIX >= minPrec) {
-        this.advance()
-        const next = this.peek()
-        if (next?.kind === 'op' && next.value === '(') {
+      try {
+        // ── Postfix: member access, call, optional chaining ──────────
+        if (t.kind === 'op' && t.value === '.' && PREC.POSTFIX >= minPrec) {
           this.advance()
-          const args = this.parseArgList()
-          left = this.appendCall(left, args, true, this.lastEnd())
-        } else if (next?.kind === 'op' && next.value === '[') {
-          this.advance()
-          const prop = this.parseSequenceExpr()
-          this.expectOp(']')
-          left = this.appendMember(left, prop, true, true, this.lastEnd())
-        } else {
-          const prop = this.expect('identifier', 'Expected identifier after ?.')
+          const prop = this.expect('identifier', 'Expected property name after .')
           left = this.appendMember(
             left,
             { type: 'Identifier', name: prop.value, start: prop.start, end: prop.end },
             false,
-            true,
+            false,
             prop.end,
           )
+          continue
         }
-        continue
-      }
 
-      if (t.kind === 'op' && t.value === '[' && PREC.POSTFIX >= minPrec) {
-        this.advance()
-        const prop = this.parseSequenceExpr()
-        this.expectOp(']')
-        left = this.appendMember(left, prop, true, false, this.lastEnd())
-        continue
-      }
-
-      if (t.kind === 'op' && t.value === '(' && PREC.POSTFIX >= minPrec) {
-        this.advance()
-        const args = this.parseArgList()
-        left = this.appendCall(left, args, false, this.lastEnd())
-        continue
-      }
-
-      // Update expressions bind after member/call access but before infix operators.
-      if (t.kind === 'op' && isUpdateOperator(t.value) && PREC.POSTFIX >= minPrec) {
-        if (!this.opts.allowAssignments) {
-          throw new JSParseError(
-            `Update operator '${t.value}' is not allowed in read-only expressions`,
-            t,
-            this.src,
-          )
+        if (t.kind === 'op' && t.value === '?.' && PREC.POSTFIX >= minPrec) {
+          this.advance()
+          const next = this.peek()
+          if (next?.kind === 'op' && next.value === '(') {
+            this.advance()
+            const args = this.parseArgList()
+            left = this.appendCall(left, args, true, this.lastEnd())
+          } else if (next?.kind === 'op' && next.value === '[') {
+            this.advance()
+            const prop = this.parseSequenceExpr()
+            this.expectOp(']')
+            left = this.appendMember(left, prop, true, true, this.lastEnd())
+          } else {
+            const prop = this.expect('identifier', 'Expected identifier after ?.')
+            left = this.appendMember(
+              left,
+              { type: 'Identifier', name: prop.value, start: prop.start, end: prop.end },
+              false,
+              true,
+              prop.end,
+            )
+          }
+          continue
         }
-        if (this.hasLineTerminatorBetween(left.end, t.start)) break
-        this.assertWritableTarget(left, t, 'updated')
-        this.advance()
-        left = {
-          type: 'UpdateExpression',
-          operator: t.value,
-          argument: left,
-          prefix: false,
-          start: left.start,
-          end: t.end,
-        } satisfies UpdateExpression
-        continue
-      }
 
-      // Tagged template literal
-      if (t.kind === 'template' && PREC.POSTFIX >= minPrec) {
-        if (this.opts.allowTaggedTemplates === false) {
-          throw new JSParseError(
-            'Tagged template literals are not enabled in this context (pass { allowTaggedTemplates: true })',
-            t,
-            this.src,
-          )
+        if (t.kind === 'op' && t.value === '[' && PREC.POSTFIX >= minPrec) {
+          this.advance()
+          const prop = this.parseSequenceExpr()
+          this.expectOp(']')
+          left = this.appendMember(left, prop, true, false, this.lastEnd())
+          continue
         }
-        if (left.type === 'ChainExpression' && !this.parenthesizedNodes.has(left)) {
-          throw new JSParseError(
-            'Tagged templates are not allowed in an optional chain',
-            t,
-            this.src,
-          )
+
+        if (t.kind === 'op' && t.value === '(' && PREC.POSTFIX >= minPrec) {
+          this.advance()
+          const args = this.parseArgList()
+          left = this.appendCall(left, args, false, this.lastEnd())
+          continue
         }
-        this.advance()
-        const quasi = this.buildTemplateNode(t, true)
-        left = {
-          type: 'TaggedTemplateExpression',
-          tag: left,
-          quasi,
-          start: left.start,
-          end: quasi.end,
-        } satisfies TaggedTemplateExpression
-        continue
-      }
 
-      // ── Keyword infix operators ────────────────────────────────────
-      if (t.kind === 'identifier' && isBinaryKeywordOperator(t.value)) {
-        if (t.value === 'in' && this.opts.allowIn === false) break
-        const prec = BINARY_OPERATOR_INFO[t.value].precedence
-        if (prec < minPrec) break
-        this.advance()
-        const right = this.parseExpr(prec + 1)
-        left = {
-          type: 'BinaryExpression',
-          operator: t.value,
-          left,
-          right,
-          start: left.start,
-          end: this.lastEnd(),
-        } satisfies BinaryExpression
-        continue
-      }
-
-      // ── Regular infix operators ───────────────────────────────────
-      if (t.kind === 'op') {
-        if (isAssignmentOperator(t.value)) {
+        // Update expressions bind after member/call access but before infix operators.
+        if (t.kind === 'op' && isUpdateOperator(t.value) && PREC.POSTFIX >= minPrec) {
           if (!this.opts.allowAssignments) {
             throw new JSParseError(
-              `Assignment operator '${t.value}' is not allowed in read-only expressions`,
+              `Update operator '${t.value}' is not allowed in read-only expressions`,
               t,
               this.src,
             )
           }
-          break
+          if (this.hasLineTerminatorBetween(left.end, t.start)) break
+          this.assertWritableTarget(left, t, 'updated')
+          this.advance()
+          left = {
+            type: 'UpdateExpression',
+            operator: t.value,
+            argument: left,
+            prefix: false,
+            start: left.start,
+            end: t.end,
+          } satisfies UpdateExpression
+          continue
         }
 
-        const info = getInfixOperatorInfo(t.value)
-        if (!info || info.precedence < minPrec) break
-
-        this.advance()
-        const nextMin = info.associativity === 'right' ? info.precedence : info.precedence + 1
-        const right = this.parseExpr(nextMin)
-
-        // Logical operators get their own node type
-        if (isLogicalOperator(t.value)) {
-          assertValidLogicalMixing(t.value, left, right, t, this.parenthesizedNodes, this.src)
+        // Tagged template literal
+        if (t.kind === 'template' && PREC.POSTFIX >= minPrec) {
+          if (this.opts.allowTaggedTemplates === false) {
+            throw new JSParseError(
+              'Tagged template literals are not enabled in this context (pass { allowTaggedTemplates: true })',
+              t,
+              this.src,
+            )
+          }
+          if (left.type === 'ChainExpression' && !this.parenthesizedNodes.has(left)) {
+            throw new JSParseError(
+              'Tagged templates are not allowed in an optional chain',
+              t,
+              this.src,
+            )
+          }
+          this.advance()
+          const quasi = this.buildTemplateNode(t, true)
           left = {
-            type: 'LogicalExpression',
-            operator: t.value,
-            left,
-            right,
+            type: 'TaggedTemplateExpression',
+            tag: left,
+            quasi,
             start: left.start,
-            end: this.lastEnd(),
-          } satisfies LogicalExpression
-        } else if (isBinaryOperator(t.value)) {
+            end: quasi.end,
+          } satisfies TaggedTemplateExpression
+          continue
+        }
+
+        // ── Keyword infix operators ────────────────────────────────────
+        if (t.kind === 'identifier' && isBinaryKeywordOperator(t.value)) {
+          if (t.value === 'in' && this.opts.allowIn === false) break
+          const prec = BINARY_OPERATOR_INFO[t.value].precedence
+          if (prec < minPrec) break
+          this.advance()
+          const right = this.parseExpr(prec + 1)
           left = {
             type: 'BinaryExpression',
             operator: t.value,
@@ -332,13 +433,63 @@ export class JSExpressionParser {
             start: left.start,
             end: this.lastEnd(),
           } satisfies BinaryExpression
-        } else {
+          continue
+        }
+
+        // ── Regular infix operators ───────────────────────────────────
+        if (t.kind === 'op') {
+          if (isAssignmentOperator(t.value)) {
+            if (!this.opts.allowAssignments) {
+              throw new JSParseError(
+                `Assignment operator '${t.value}' is not allowed in read-only expressions`,
+                t,
+                this.src,
+              )
+            }
+            break
+          }
+
+          const info = getInfixOperatorInfo(t.value)
+          if (!info || info.precedence < minPrec) break
+
+          this.advance()
+          const nextMin = info.associativity === 'right' ? info.precedence : info.precedence + 1
+          const right = this.parseExpr(nextMin)
+
+          // Logical operators get their own node type
+          if (isLogicalOperator(t.value)) {
+            assertValidLogicalMixing(t.value, left, right, t, this.parenthesizedNodes, this.src)
+            left = {
+              type: 'LogicalExpression',
+              operator: t.value,
+              left,
+              right,
+              start: left.start,
+              end: this.lastEnd(),
+            } satisfies LogicalExpression
+          } else if (isBinaryOperator(t.value)) {
+            left = {
+              type: 'BinaryExpression',
+              operator: t.value,
+              left,
+              right,
+              start: left.start,
+              end: this.lastEnd(),
+            } satisfies BinaryExpression
+          } else {
+            break
+          }
+          continue
+        }
+
+        break
+      } catch (error) {
+        if (rollbackOnIncomplete && error instanceof JSIncompleteParseError) {
+          this.rollbackTo(continuationStart)
           break
         }
-        continue
+        throw error
       }
-
-      break
     }
 
     return left
@@ -415,7 +566,7 @@ export class JSExpressionParser {
   // parsePrimary — null-denotation (prefix position)
   private parsePrimary(): ExpressionNode {
     const t = this.peek()
-    if (!t) throw new JSParseError('Unexpected end of expression')
+    if (!t) throw new JSIncompleteParseError('Unexpected end of expression')
 
     // ── Literals ────────────────────────────────────────────────────
     if (t.kind === 'number') {
@@ -593,7 +744,9 @@ export class JSExpressionParser {
         this.advance()
         const elements: Array<ExpressionNode | SpreadElement | null> = []
         while (this.peek()?.value !== ']') {
-          if (!this.peek()) throw new JSParseError('Unterminated array literal', t, this.src)
+          if (!this.peek()) {
+            throw new JSIncompleteParseError('Unterminated array literal', t, this.src)
+          }
           if (this.peek()!.value === ',') {
             this.advance()
             elements.push(null) // hole
@@ -622,7 +775,9 @@ export class JSExpressionParser {
         this.advance()
         const properties: Array<Property | SpreadElement> = []
         while (this.peek()?.value !== '}') {
-          if (!this.peek()) throw new JSParseError('Unterminated object literal', t, this.src)
+          if (!this.peek()) {
+            throw new JSIncompleteParseError('Unterminated object literal', t, this.src)
+          }
 
           // Spread property
           if (this.peek()!.value === '...') {
@@ -658,7 +813,9 @@ export class JSExpressionParser {
           } else {
             // Regular or shorthand key
             const keyTok = this.advance()!
-            if (!keyTok) throw new JSParseError('Expected property key', undefined, this.src)
+            if (!keyTok) {
+              throw new JSIncompleteParseError('Expected property key', undefined, this.src)
+            }
             const key = propertyKeyFromToken(keyTok)
 
             if (this.peek()?.value === ':') {
@@ -715,7 +872,7 @@ export class JSExpressionParser {
   private parseArgList(): Array<ExpressionNode | SpreadElement> {
     const args: Array<ExpressionNode | SpreadElement> = []
     while (this.peek()?.value !== ')') {
-      if (!this.peek()) throw new JSParseError('Unterminated argument list')
+      if (!this.peek()) throw new JSIncompleteParseError('Unterminated argument list')
       if (this.peek()!.value === '...') {
         const s = this.advance()!
         args.push({
@@ -742,9 +899,7 @@ export class JSExpressionParser {
     return {
       opts: this.opts,
       src: this.src,
-      tokens: this.tokens,
-      position: this.pos,
-      peek: () => this.peek(),
+      peek: (offset = 0) => this.peek(offset),
       advance: () => this.advance(),
       lastEnd: () => this.lastEnd(),
       expect: (kind, msg) => this.expect(kind, msg),
@@ -770,7 +925,7 @@ export class JSExpressionParser {
   private buildTemplateNode(tok: JSToken, tagged: boolean): TemplateLiteral {
     return buildTemplateAstNode(tok, tagged, this.src, (exprTokens) => {
       const parser = new JSExpressionParser(exprTokens, this.opts, this.src)
-      return parser.parseInternal()
+      return parser.parseInternal(true, false)
     })
   }
 
@@ -802,8 +957,8 @@ export class JSExpressionParser {
     )
   }
 
-  private peek(): JSToken | undefined {
-    return this.tokens[this.pos]
+  private peek(offset = 0): JSToken | undefined {
+    return this.tokens[this.pos + offset]
   }
   private advance(): JSToken | undefined {
     return this.tokens[this.pos++]
@@ -812,25 +967,36 @@ export class JSExpressionParser {
     return this.tokens[this.pos - 1]?.end ?? 0
   }
 
+  private rollbackTo(position: number): void {
+    this.pos = position
+    this.rolledBack = true
+  }
+
   private expect(kind: JSTokenKind, msg?: string): JSToken {
     const t = this.advance()
-    if (!t || t.kind !== kind)
-      throw new JSParseError(
-        msg ?? `Expected ${kind}, got '${t?.value ?? 'end of input'}'`,
-        t,
+    if (!t) {
+      throw new JSIncompleteParseError(
+        msg ?? `Expected ${kind}, got 'end of input'`,
+        undefined,
         this.src,
       )
+    }
+    if (t.kind !== kind)
+      throw new JSParseError(msg ?? `Expected ${kind}, got '${t.value}'`, t, this.src)
     return t
   }
 
   private expectOp(raw: string, msg?: string): JSToken {
     const t = this.advance()
-    if (!t || t.value !== raw)
-      throw new JSParseError(
-        msg ?? `Expected '${raw}', got '${t?.value ?? 'end of input'}'`,
-        t ?? this.tokens[this.pos - 1],
+    if (!t) {
+      throw new JSIncompleteParseError(
+        msg ?? `Expected '${raw}', got 'end of input'`,
+        this.tokens[this.pos - 1],
         this.src,
       )
+    }
+    if (t.value !== raw)
+      throw new JSParseError(msg ?? `Expected '${raw}', got '${t.value}'`, t, this.src)
     return t
   }
 
@@ -841,10 +1007,20 @@ function finalizeAst(
   ast: ExpressionNode,
   source: string,
   locations: JSParserOptions['locations'],
-): PublicExpressionNode {
+): PublicExpressionNode
+function finalizeAst(
+  ast: InternalBindingPattern,
+  source: string,
+  locations: JSParserOptions['locations'],
+): PublicBindingPattern
+function finalizeAst(
+  ast: ExpressionNode | InternalBindingPattern,
+  source: string,
+  locations: JSParserOptions['locations'],
+): PublicExpressionNode | PublicBindingPattern {
   const locationResolver = locations ? createLocationResolver(source, locations) : undefined
 
-  const visit = (node: ExpressionNode): Record<string, unknown> => {
+  const visit = (node: ExpressionNode | InternalBindingPattern): Record<string, unknown> => {
     const result: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(node)) {
       if (key === 'start' || key === 'end') continue
@@ -858,10 +1034,10 @@ function finalizeAst(
     return result
   }
 
-  return visit(ast) as unknown as PublicExpressionNode
+  return visit(ast) as unknown as PublicExpressionNode | PublicBindingPattern
 }
 
-function isInternalNode(value: unknown): value is ExpressionNode {
+function isInternalNode(value: unknown): value is ExpressionNode | InternalBindingPattern {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -910,33 +1086,6 @@ function createLocationResolver(source: string, options: true | JSLocationOption
     start: positionAt(start),
     end: positionAt(end),
   })
-}
-
-function propertyKeyFromToken(token: JSToken): ExpressionNode {
-  const offsets = { start: token.start, end: token.end }
-  if (token.kind === 'string') {
-    return { type: 'Literal', value: parseStringValue(token.value), raw: token.value, ...offsets }
-  }
-  if (token.kind === 'number') {
-    return {
-      type: 'Literal',
-      value: Number(token.value.replace(/_/g, '')),
-      raw: token.value,
-      ...offsets,
-    }
-  }
-  if (token.kind === 'bigint') {
-    const rawValue = token.value.replace(/_/g, '').slice(0, -1)
-    const value = BigInt(rawValue)
-    return { type: 'Literal', value, bigint: value.toString(), raw: token.value, ...offsets }
-  }
-  if (token.kind === 'boolean') {
-    return { type: 'Literal', value: token.value === 'true', raw: token.value, ...offsets }
-  }
-  if (token.kind === 'null') {
-    return { type: 'Literal', value: null, raw: token.value, ...offsets }
-  }
-  return { type: 'Identifier', name: token.value, ...offsets }
 }
 
 // #endregion

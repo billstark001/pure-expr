@@ -56,6 +56,14 @@ export function validateTopicUsage(
   validateExpressionTopicUsage(node, false, parenthesizedNodes, src)
 }
 
+export function validateBindingTopicUsage(
+  binding: BindingPattern,
+  parenthesizedNodes: WeakSet<ExpressionNode>,
+  src: string,
+): void {
+  validateBindingTopicUsageInternal(binding, false, parenthesizedNodes, src)
+}
+
 function collectBoundNames(binding: BindingPattern): string[] {
   switch (binding.type) {
     case 'Identifier':
@@ -216,7 +224,7 @@ function validateExpressionTopicUsage(
     case 'ArrowFunctionExpression': {
       let topicCount = 0
       for (const param of node.params) {
-        topicCount += validateBindingTopicUsage(param, allowTopic, parenthesizedNodes, src)
+        topicCount += validateBindingTopicUsageInternal(param, allowTopic, parenthesizedNodes, src)
       }
       return (
         topicCount + validateExpressionTopicUsage(node.body, allowTopic, parenthesizedNodes, src)
@@ -329,7 +337,7 @@ function validatePropertyTopicUsage(
   )
 }
 
-function validateBindingTopicUsage(
+function validateBindingTopicUsageInternal(
   binding: BindingPattern,
   allowTopic: boolean,
   parenthesizedNodes: WeakSet<ExpressionNode>,
@@ -340,16 +348,26 @@ function validateBindingTopicUsage(
       return 0
     case 'AssignmentPattern':
       return (
-        validateBindingTopicUsage(binding.left, allowTopic, parenthesizedNodes, src) +
+        validateBindingTopicUsageInternal(binding.left, allowTopic, parenthesizedNodes, src) +
         validateExpressionTopicUsage(binding.right, allowTopic, parenthesizedNodes, src)
       )
     case 'RestElement':
-      return validateBindingTopicUsage(binding.argument, allowTopic, parenthesizedNodes, src)
+      return validateBindingTopicUsageInternal(
+        binding.argument,
+        allowTopic,
+        parenthesizedNodes,
+        src,
+      )
     case 'ArrayPattern': {
       let topicCount = 0
       for (const element of binding.elements) {
         if (element) {
-          topicCount += validateBindingTopicUsage(element, allowTopic, parenthesizedNodes, src)
+          topicCount += validateBindingTopicUsageInternal(
+            element,
+            allowTopic,
+            parenthesizedNodes,
+            src,
+          )
         }
       }
       return topicCount
@@ -358,7 +376,7 @@ function validateBindingTopicUsage(
       let topicCount = 0
       for (const property of binding.properties) {
         if (property.type === 'RestElement') {
-          topicCount += validateBindingTopicUsage(
+          topicCount += validateBindingTopicUsageInternal(
             property.argument,
             allowTopic,
             parenthesizedNodes,
@@ -373,7 +391,7 @@ function validateBindingTopicUsage(
               src,
             )
           }
-          topicCount += validateBindingTopicUsage(
+          topicCount += validateBindingTopicUsageInternal(
             property.value,
             allowTopic,
             parenthesizedNodes,

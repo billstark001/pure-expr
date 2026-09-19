@@ -1,5 +1,5 @@
 import type { JSToken, JSTokenKind } from '../lexer/types.js'
-import { JSParseError, type JSParserOptions } from './errors.js'
+import { JSIncompleteParseError, JSParseError, type JSParserOptions } from './errors.js'
 import { FORBIDDEN_ARROW_BINDING_IDENTIFIERS } from './grammar.js'
 import type {
   ArrayPattern,
@@ -12,15 +12,13 @@ import type {
   ObjectPattern,
   RestElement,
 } from './node-types.js'
-import { parseStringValue } from './shared.js'
+import { propertyKeyFromToken } from './shared.js'
 import { validateArrowFunction } from './validation.js'
 
 export interface ParserBindingDelegate {
   readonly opts: JSParserOptions
   readonly src: string
-  readonly tokens: readonly JSToken[]
-  readonly position: number
-  peek(): JSToken | undefined
+  peek(offset?: number): JSToken | undefined
   advance(): JSToken | undefined
   lastEnd(): number
   expect(kind: JSTokenKind, msg?: string): JSToken
@@ -35,7 +33,7 @@ export function isArrowFunctionStart(delegate: ParserBindingDelegate): boolean {
   if (!start) return false
 
   if (start.kind === 'identifier') {
-    const arrow = delegate.tokens[delegate.position + 1]
+    const arrow = delegate.peek(1)
     return (
       arrow?.kind === 'op' &&
       arrow.value === '=>' &&
@@ -44,11 +42,11 @@ export function isArrowFunctionStart(delegate: ParserBindingDelegate): boolean {
   }
 
   if (start.kind === 'op' && start.value === '(') {
-    const closeIndex = findMatchingParenIndex(delegate.tokens, delegate.position)
-    if (closeIndex < 0) return false
+    const closeOffset = findMatchingParenOffset(delegate)
+    if (closeOffset < 0) return false
 
-    const close = delegate.tokens[closeIndex]
-    const arrow = delegate.tokens[closeIndex + 1]
+    const close = delegate.peek(closeOffset)
+    const arrow = delegate.peek(closeOffset + 1)
     return (
       close?.kind === 'op' &&
       close.value === ')' &&
@@ -117,7 +115,9 @@ function parseArrowParameterList(delegate: ParserBindingDelegate): BindingPatter
 
   for (;;) {
     const start = delegate.peek()
-    if (!start) throw new JSParseError('Unterminated arrow parameter list', open, delegate.src)
+    if (!start) {
+      throw new JSIncompleteParseError('Unterminated arrow parameter list', open, delegate.src)
+    }
 
     if (start.kind === 'op' && start.value === '...') {
       delegate.advance()
@@ -141,7 +141,7 @@ function parseArrowParameterList(delegate: ParserBindingDelegate): BindingPatter
   return params
 }
 
-function parseBindingElement(delegate: ParserBindingDelegate): BindingPattern {
+export function parseBindingElement(delegate: ParserBindingDelegate): BindingPattern {
   const binding = parseBindingPattern(delegate)
   if (delegate.peek()?.kind === 'op' && delegate.peek()!.value === '=') {
     delegate.advance()
@@ -156,10 +156,10 @@ function parseBindingElement(delegate: ParserBindingDelegate): BindingPattern {
   return binding
 }
 
-function parseBindingPattern(delegate: ParserBindingDelegate): BindingPattern {
+export function parseBindingPattern(delegate: ParserBindingDelegate): BindingPattern {
   const token = delegate.peek()
   if (!token) {
-    throw new JSParseError('Unexpected end of arrow parameter list', undefined, delegate.src)
+    throw new JSIncompleteParseError('Unexpected end of binding pattern', undefined, delegate.src)
   }
 
   if (token.kind === 'identifier') {
@@ -169,7 +169,7 @@ function parseBindingPattern(delegate: ParserBindingDelegate): BindingPattern {
   if (token.kind === 'op' && token.value === '{') return parseBindingObjectPattern(delegate)
 
   throw new JSParseError(
-    `Unexpected token '${token.value}' in arrow parameter list`,
+    `Unexpected token '${token.value}' in binding pattern`,
     token,
     delegate.src,
   )
@@ -181,7 +181,7 @@ function parseBindingArrayPattern(delegate: ParserBindingDelegate): ArrayPattern
 
   while (delegate.peek()?.kind !== 'op' || delegate.peek()!.value !== ']') {
     if (!delegate.peek()) {
-      throw new JSParseError('Unterminated array binding pattern', open, delegate.src)
+      throw new JSIncompleteParseError('Unterminated array binding pattern', open, delegate.src)
     }
     if (delegate.peek()!.kind === 'op' && delegate.peek()!.value === ',') {
       delegate.advance()
@@ -219,7 +219,7 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): ObjectPatte
 
   while (delegate.peek()?.kind !== 'op' || delegate.peek()!.value !== '}') {
     if (!delegate.peek()) {
-      throw new JSParseError('Unterminated object binding pattern', open, delegate.src)
+      throw new JSIncompleteParseError('Unterminated object binding pattern', open, delegate.src)
     }
 
     if (delegate.peek()!.kind === 'op' && delegate.peek()!.value === '...') {
@@ -255,7 +255,7 @@ function parseBindingObjectPattern(delegate: ParserBindingDelegate): ObjectPatte
       })
     } else {
       const keyTok = delegate.advance()!
-      const key = tokenToPropertyKeyNode(keyTok)
+      const key = propertyKeyFromToken(keyTok)
 
       if (delegate.peek()?.kind === 'op' && delegate.peek()!.value === ':') {
         delegate.advance()
@@ -325,7 +325,7 @@ function bindingIdentifierFromToken(delegate: ParserBindingDelegate, token: JSTo
   }
   if (FORBIDDEN_ARROW_BINDING_IDENTIFIERS.has(token.value)) {
     throw new JSParseError(
-      `'${token.value}' is not allowed in arrow parameters`,
+      `'${token.value}' is not allowed in binding patterns`,
       token,
       delegate.src,
     )
@@ -333,50 +333,17 @@ function bindingIdentifierFromToken(delegate: ParserBindingDelegate, token: JSTo
   return { type: 'Identifier', name: token.value, start: token.start, end: token.end }
 }
 
-function tokenToPropertyKeyNode(token: JSToken): ExpressionNode {
-  const offsets = { start: token.start, end: token.end }
-  if (token.kind === 'string') {
-    return {
-      type: 'Literal',
-      value: parseStringValue(token.value),
-      raw: token.value,
-      ...offsets,
-    }
-  }
-  if (token.kind === 'number') {
-    return {
-      type: 'Literal',
-      value: Number(token.value.replace(/_/g, '')),
-      raw: token.value,
-      ...offsets,
-    }
-  }
-  if (token.kind === 'bigint') {
-    const rawValue = token.value.replace(/_/g, '').slice(0, -1)
-    const value = BigInt(rawValue)
-    return { type: 'Literal', value, bigint: value.toString(), raw: token.value, ...offsets }
-  }
-  if (token.kind === 'boolean') {
-    return { type: 'Literal', value: token.value === 'true', raw: token.value, ...offsets }
-  }
-  if (token.kind === 'null') {
-    return { type: 'Literal', value: null, raw: token.value, ...offsets }
-  }
-  return { type: 'Identifier', name: token.value, ...offsets }
-}
-
-function findMatchingParenIndex(tokens: readonly JSToken[], startIndex: number): number {
+function findMatchingParenOffset(delegate: ParserBindingDelegate): number {
   let depth = 0
 
-  for (let index = startIndex; index < tokens.length; index += 1) {
-    const token = tokens[index]
+  for (let offset = 0; ; offset += 1) {
+    const token = delegate.peek(offset)
+    if (!token) return -1
     if (token.kind !== 'op') continue
     if (token.value === '(') depth += 1
     else if (token.value === ')') {
       depth -= 1
-      if (depth === 0) return index
+      if (depth === 0) return offset
     }
   }
-
-  return -1
 }

@@ -60,3 +60,11 @@ export class JSParseError extends Error {
     this.token = token
   }
 }
+
+/** Parse failure caused solely by the source ending before the current construct is complete. */
+export class JSIncompleteParseError extends JSParseError {
+  constructor(message: string, token?: JSToken, src = '') {
+    super(message, token, src)
+    this.name = 'JSIncompleteParseError'
+  }
+}

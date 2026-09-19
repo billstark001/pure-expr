@@ -6,6 +6,7 @@ import {
 } from './evaluator.js'
 import { JSLexer, type JSToken } from './lexer/index.js'
 import type { BindingPattern, ExpressionNode } from './node-types.js'
+import { collectScanTokens, type JSScanOptions, type JSScanStopReason } from './parser/scanner.js'
 import { JSExpressionParser, JSParseError, type JSParserOptions } from './parser.js'
 
 export interface EvalOptions extends JSParserOptions, JSEvalOptions {}
@@ -86,8 +87,19 @@ export type {
   UnaryExpression,
   UpdateExpression,
 } from './node-types.js'
+export type {
+  JSIncompleteBehavior,
+  JSScanBoundary,
+  JSScanBoundaryContext,
+  JSScanOptions,
+  JSScanProfile,
+  JSScanStopReason,
+} from './parser/scanner.js'
 export {
+  type JSBindingPrefixResult,
   JSExpressionParser,
+  type JSExpressionPrefixResult,
+  JSIncompleteParseError,
   type JSLocationOptions,
   JSParseError,
   type JSParserOptions,
@@ -103,6 +115,31 @@ export interface TransactionalCompiledExpression {
   readonly source: string
   readonly ast: ExpressionNode
   evaluate(context?: EvaluationInput): EvaluationTransactionResult
+}
+
+export interface ExpressionScanResult {
+  readonly expression: ExpressionNode
+  readonly start: number
+  readonly end: number
+  readonly next: number
+  readonly stoppedBy: JSScanStopReason
+}
+
+export interface BindingPatternScanResult {
+  readonly pattern: BindingPattern
+  readonly start: number
+  readonly end: number
+  readonly next: number
+  readonly stoppedBy: JSScanStopReason
+}
+
+export interface IterationClause {
+  readonly binding: BindingPattern
+  readonly iterable: ExpressionNode
+  readonly start: number
+  readonly end: number
+  readonly separatorStart: number
+  readonly separatorEnd: number
 }
 
 export function tokenizeExpression(
@@ -123,7 +160,11 @@ function validateSourceLength(
   }
 }
 
-function validateAstBudget(ast: ExpressionNode, options: JSParserOptions): void {
+function validateSyntaxBudget(
+  ast: ExpressionNode | BindingPattern,
+  options: JSParserOptions,
+  rootKind: 'expression' | 'binding',
+): void {
   let nodeCount = 0
 
   const bumpBudget = (depth: number): void => {
@@ -272,7 +313,8 @@ function validateAstBudget(ast: ExpressionNode, options: JSParserOptions): void 
     }
   }
 
-  visit(ast, 1)
+  if (rootKind === 'expression') visit(ast as ExpressionNode, 1)
+  else visitBinding(ast as BindingPattern, 1)
 }
 
 export function parseExpression(expression: string, options: JSParserOptions = {}): ExpressionNode {
@@ -280,8 +322,105 @@ export function parseExpression(expression: string, options: JSParserOptions = {
   const tokens = tokenizeExpression(expression, options)
   const parser = new JSExpressionParser(tokens, options, expression)
   const ast = parser.parse()
-  validateAstBudget(ast, options)
+  validateSyntaxBudget(ast, options, 'expression')
   return ast
+}
+
+/** Parse one complete ESTree binding pattern and require full source consumption. */
+export function parseBindingPattern(source: string, options: JSParserOptions = {}): BindingPattern {
+  validateSourceLength(source, options)
+  const tokens = tokenizeExpression(source, options)
+  const pattern = new JSExpressionParser(tokens, options, source).parseBindingPattern()
+  validateSyntaxBudget(pattern, options, 'binding')
+  return pattern
+}
+
+/** Scan one expression prefix from a larger host-language source string. */
+export function scanExpression(source: string, options: JSScanOptions = {}): ExpressionScanResult {
+  const collected = collectScanTokens(source, options)
+  const parsed = new JSExpressionParser(collected.tokens, options, source).parsePrefix(
+    options.incomplete ?? 'error',
+  )
+  validateSyntaxBudget(parsed.expression, options, 'expression')
+  const next = parsed.nextToken?.start ?? collected.boundaryOffset
+  return {
+    expression: parsed.expression,
+    start: collected.tokens[0]?.start ?? options.start ?? 0,
+    end: parsed.end,
+    next,
+    stoppedBy: parsed.rolledBack
+      ? 'incomplete'
+      : parsed.nextToken
+        ? 'syntax'
+        : collected.stoppedAtBoundary
+          ? 'boundary'
+          : 'end',
+  }
+}
+
+/** Scan one binding-pattern prefix from a larger host-language source string. */
+export function scanBindingPattern(
+  source: string,
+  options: JSScanOptions = {},
+): BindingPatternScanResult {
+  const collected = collectScanTokens(source, options)
+  const parsed = new JSExpressionParser(collected.tokens, options, source).parseBindingPrefix(
+    options.incomplete ?? 'error',
+  )
+  validateSyntaxBudget(parsed.pattern, options, 'binding')
+  const next = parsed.nextToken?.start ?? collected.boundaryOffset
+  return {
+    pattern: parsed.pattern,
+    start: collected.tokens[0]?.start ?? options.start ?? 0,
+    end: parsed.end,
+    next,
+    stoppedBy: parsed.rolledBack
+      ? 'incomplete'
+      : parsed.nextToken
+        ? 'syntax'
+        : collected.stoppedAtBoundary
+          ? 'boundary'
+          : 'end',
+  }
+}
+
+/** Parse a DSL iteration clause shaped like `<binding> of <expression>`. */
+export function parseIterationClause(
+  source: string,
+  options: JSParserOptions = {},
+): IterationClause {
+  validateSourceLength(source, options)
+  const scannedBinding = scanBindingPattern(source, {
+    ...options,
+    boundary: ({ token, depth }) =>
+      depth === 0 && token.kind === 'identifier' && token.value === 'of',
+  })
+  const separatorLexer = new JSLexer(source, { start: scannedBinding.next })
+  const separator = separatorLexer.nextToken()
+  if (separator?.kind !== 'identifier' || separator.value !== 'of') {
+    throw new JSParseError(
+      "Expected contextual keyword 'of' after binding pattern",
+      separator,
+      source,
+    )
+  }
+
+  const iterableLexer = new JSLexer(source, { start: separator.end })
+  const iterableTokens = iterableLexer.tokenize()
+  if (iterableTokens.length === 0) {
+    throw new JSParseError("Expected expression after contextual keyword 'of'", separator, source)
+  }
+  const iterable = new JSExpressionParser(iterableTokens, options, source).parse()
+  validateSyntaxBudget(iterable, options, 'expression')
+
+  return {
+    binding: scannedBinding.pattern,
+    iterable,
+    start: scannedBinding.start,
+    end: iterableTokens[iterableTokens.length - 1].end,
+    separatorStart: separator.start,
+    separatorEnd: separator.end,
+  }
 }
 
 export function compileExpression(
