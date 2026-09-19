@@ -45,9 +45,10 @@ export interface UnaryExpression extends Omit<ESTreeUnaryExpression, 'argument' 
   operator: SupportedUnaryOperator
 }
 
-/** Restricted update expression: only identifier bindings are writable. */
+export type AssignmentTarget = Identifier | MemberExpression
+
 export interface UpdateExpression extends Omit<ESTreeUpdateExpression, 'argument'> {
-  argument: Identifier
+  argument: AssignmentTarget
 }
 
 export interface AwaitExpression extends Omit<ESTreeAwaitExpression, 'argument'> {
@@ -128,9 +129,8 @@ export interface AssignmentPattern extends Omit<ESTreeAssignmentPattern, 'left' 
   right: ExpressionNode
 }
 
-/** Restricted assignment expression: only identifier bindings are writable. */
 export interface AssignmentExpression extends Omit<ESTreeAssignmentExpression, 'left' | 'right'> {
-  left: Identifier
+  left: AssignmentTarget
   right: ExpressionNode
 }
 

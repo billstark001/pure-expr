@@ -18,6 +18,8 @@ export interface JSParserOptions {
   allowArrowFunctions?: boolean
   /** Enable identifier assignment and update expressions. Evaluation still requires a write policy. */
   allowAssignments?: boolean
+  /** Allow assignment and update targets that mutate object properties. */
+  allowMemberWrites?: boolean
   allowIn?: boolean
   allowRegexLiterals?: boolean
   allowTemplateLiterals?: boolean

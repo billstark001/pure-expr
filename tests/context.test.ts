@@ -146,8 +146,168 @@ describe('mutable binding stores', () => {
       left: { type: 'Identifier', name: 'score' },
     })
     expect(() => parseExpression('player.score = 2', { allowAssignments: true })).toThrow(
-      'Only identifier bindings',
+      'Member writes are not enabled',
     )
+    expect(
+      parseExpression('player.score = 2', {
+        allowAssignments: true,
+        allowMemberWrites: true,
+      }),
+    ).toMatchObject({
+      type: 'AssignmentExpression',
+      left: {
+        type: 'MemberExpression',
+        object: { type: 'Identifier', name: 'player' },
+        property: { type: 'Identifier', name: 'score' },
+      },
+    })
+  })
+
+  test('member writes require their explicit capability and commit mode', () => {
+    const context = { player: { score: 1 } }
+    expect(() =>
+      evaluate('player.score += 2', context, {
+        writes: 'commit',
+      }),
+    ).toThrow('Member writes are not enabled')
+    expect(() =>
+      evaluate('player.score += 2', context, {
+        writes: 'overlay',
+        allowMemberWrites: true,
+      }),
+    ).toThrow("require writes: 'commit'")
+    expect(() =>
+      evaluate('player.score += 2', context, {
+        writes: 'transaction',
+        allowMemberWrites: true,
+      }),
+    ).toThrow("require writes: 'commit'")
+    expect(context.player.score).toBe(1)
+  })
+
+  test('commit mode supports member assignment and update expressions', () => {
+    const directContext = { player: { score: 1 } }
+    expect(
+      evaluate(
+        'player.score = 3, player.score += 2, player.score++, ++player.score',
+        directContext,
+        { writes: 'commit', allowMemberWrites: true },
+      ),
+    ).toBe(7)
+    expect(directContext.player.score).toBe(7)
+
+    const compiledContext = { player: { score: 1 } }
+    const compiled = compileExpression(
+      'player.score = 3, player.score += 2, player.score++, ++player.score',
+      { writes: 'commit', allowMemberWrites: true },
+    )
+    expect(compiled.evaluate(compiledContext)).toBe(7)
+    expect(compiledContext.player.score).toBe(7)
+  })
+
+  test('computed member references are evaluated once and before the right-hand side', () => {
+    const events: string[] = []
+    const context = {
+      target: { value: 1 },
+      key: () => {
+        events.push('key')
+        return 'value'
+      },
+      right: () => {
+        events.push('right')
+        return 4
+      },
+    }
+
+    expect(
+      evaluate('target[key()] += right()', context, {
+        ...ALLOW_CALLS,
+        writes: 'commit',
+        allowMemberWrites: true,
+      }),
+    ).toBe(5)
+    expect(context.target.value).toBe(5)
+    expect(events).toEqual(['key', 'right'])
+  })
+
+  test('member assignment captures its reference before evaluating the right-hand side', () => {
+    const original = { value: 1 }
+    const replacement = { value: 2 }
+    const context = { target: original, replacement }
+
+    expect(
+      evaluate('target.value = (target = replacement, 5)', context, {
+        writes: 'commit',
+        allowMemberWrites: true,
+      }),
+    ).toBe(5)
+    expect(original.value).toBe(5)
+    expect(replacement.value).toBe(2)
+    expect(context.target).toBe(replacement)
+  })
+
+  test('computed keys run before a null receiver fails and the right-hand side stays skipped', () => {
+    const events: string[] = []
+    const context = {
+      key: () => {
+        events.push('key')
+        return 'value'
+      },
+      right: () => {
+        events.push('right')
+        return 1
+      },
+    }
+
+    expect(() =>
+      evaluate('null[key()] = right()', context, {
+        ...ALLOW_CALLS,
+        writes: 'commit',
+        allowMemberWrites: true,
+      }),
+    ).toThrow('Cannot set properties of null')
+    expect(events).toEqual(['key'])
+  })
+
+  test('logical member assignments preserve short-circuit behavior', () => {
+    const context = { values: { yes: 1, no: 0, missing: null }, calls: 0 }
+    const right = () => {
+      context.calls += 1
+      return 4
+    }
+
+    expect(
+      evaluate(
+        'values.yes ||= right(), values.no &&= right(), values.missing ??= right(), values.missing',
+        { ...context, right },
+        { ...ALLOW_CALLS, writes: 'commit', allowMemberWrites: true },
+      ),
+    ).toBe(4)
+    expect(context.calls).toBe(1)
+    expect(context.values).toEqual({ yes: 1, no: 0, missing: 4 })
+  })
+
+  test('member writes reject blocked properties and primitive receivers', () => {
+    expect(() =>
+      evaluate(
+        'target["__proto__"] = 1',
+        { target: {} },
+        {
+          writes: 'commit',
+          allowMemberWrites: true,
+        },
+      ),
+    ).toThrow("property '__proto__'")
+    expect(() =>
+      evaluate(
+        'value.property = 1',
+        { value: 1 },
+        {
+          writes: 'commit',
+          allowMemberWrites: true,
+        },
+      ),
+    ).toThrow('primitive value')
   })
 
   test('overlay writes are visible during one evaluation and then discarded', () => {

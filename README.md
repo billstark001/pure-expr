@@ -94,7 +94,8 @@ Useful expression options:
 
 - allowAwait: enable parsing of await expressions in sync mode
 - allowArrowFunctions: enable or disable concise-body arrow functions
-- allowAssignments: enable parsing restricted identifier assignments and update expressions; evaluation normally enables this automatically when `writes` is not `deny`
+- allowAssignments: enable parsing assignment and update expressions; evaluation normally enables this automatically when `writes` is not `deny`
+- allowMemberWrites: additionally allow member assignment and update targets; evaluation requires `writes: 'commit'`
 - allowIn: enable the in operator
 - allowCalls: disable all calls, tagged templates, pipeline-internal calls, and arrow-function invocations when set to false
 - allowRegexLiterals: disable regex literals when set to false
@@ -111,7 +112,7 @@ Useful expression options:
 - maxTemplateExpressions: reject template literals above a configured placeholder count
 - maxSteps: stop evaluation when the evaluator exceeds a runtime step budget
 - contextPolicy: independently control accepted inputs, per-evaluation isolation, and freezing
-- writes: control identifier writes with `deny`, `overlay`, `commit`, or `transaction`
+- writes: control writes with `deny`, `overlay`, `commit`, or `transaction`; member writes are limited to `commit`
 - objectLiteralMode: control object-spread hardening with none, filter-blocked, plain-object-only, or safe
 - isCallableAllowed: customize which functions, methods, and template tags may execute
 - propertyAccess: customize every property and method read; use the exported ownPropertyAccess helper to reject inherited properties
@@ -172,7 +173,7 @@ pending.commit(); // storyVariables.score is now 3
 
 Transaction commits restore earlier writes if a later `BindingStore.set` fails. Custom stores that can apply a batch atomically should implement the optional `applyChanges(changes)` method; `createBindingStore` provides it automatically.
 
-Only identifier bindings are writable. This includes assignment and prefix/postfix update expressions such as `score++` and `--score`; member writes such as `object.value = 1` or `object.value++` and `delete` remain unsupported. Lexical arrow parameters can be reassigned or updated without writing the root context. Template rendering supports `deny`, `overlay`, and `commit`; transaction mode is rejected because placeholders are evaluated separately.
+Identifier bindings support assignment and prefix/postfix update expressions such as `score++` and `--score`. Pass `allowMemberWrites: true` together with `writes: 'commit'` to enable targets such as `object.value = 1`, `object.value += 1`, or `object.value++`. Member writes are intentionally rejected in `overlay` and `transaction` modes because mutating an object graph cannot be represented or rolled back by the binding store. Blocked prototype-related keys remain inaccessible. Lexical arrow parameters can be reassigned or updated without writing the root context. Template rendering supports `deny`, `overlay`, and `commit`; transaction mode is rejected because placeholders are evaluated separately.
 
 Compatibility example:
 
@@ -273,7 +274,7 @@ renderTemplate(...) and compileTemplate(...) both accept evalOptions plus templa
 ## Notes And Limits
 
 - The package ships ESM and CommonJS entrypoints. Its emitted syntax targets ES2015 for bundlers and downstream transpilers, but runtime features such as bigint and newer built-ins still depend on the host.
-- Expressions are read-only by default. Setting `writes` enables identifier assignment and update expressions; statements, member writes, `new`, and `delete` remain rejected.
+- Expressions are read-only by default. Setting `writes` enables identifier assignment and update expressions; member writes additionally require `allowMemberWrites: true` and immediate commit mode. Statements, `new`, and `delete` remain rejected.
 - Evaluation is synchronous. The allowAwait parser flag only enables parsing; it does not create an async evaluator.
 - Arrow functions are concise-body only. `this`, `arguments`, `super`, and `new.target` are rejected, and `function` / class definitions remain unsupported.
 - Root evaluation contexts must be plain objects or null-prototype objects by default. Set `contextPolicy.input` to `own-properties` or `allow` for explicit non-plain inputs, and choose `shallow-snapshot` when own enumerable bindings should always be copied.

@@ -246,11 +246,20 @@ describe('operator registry contracts', () => {
 
   test('rejects invalid update targets and postfix updates across line terminators', () => {
     expect(() => parseExpression('++object.value', { allowAssignments: true })).toThrow(
-      'Only identifier bindings can be updated',
+      'Member writes are not enabled',
     )
-    expect(() => parseExpression('(left + right)--', { allowAssignments: true })).toThrow(
-      'Only identifier bindings can be updated',
-    )
+    expect(() =>
+      parseExpression('(left + right)--', {
+        allowAssignments: true,
+        allowMemberWrites: true,
+      }),
+    ).toThrow('Only identifiers and member properties can be updated')
+    expect(() =>
+      parseExpression('object?.value++', {
+        allowAssignments: true,
+        allowMemberWrites: true,
+      }),
+    ).toThrow('Only identifiers and member properties can be updated')
     expect(() => parseExpression('value\n++', { allowAssignments: true })).toThrow(
       "Unexpected token '++' after expression",
     )

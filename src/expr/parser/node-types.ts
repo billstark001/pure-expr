@@ -44,7 +44,7 @@ export interface UnaryExpression extends Omit<PublicUnaryExpression, 'argument'>
 }
 
 export interface UpdateExpression extends Omit<PublicUpdateExpression, 'argument'>, SourceOffsets {
-  argument: Identifier
+  argument: AssignmentTarget
 }
 
 export interface AwaitExpression extends Omit<PublicAwaitExpression, 'argument'>, SourceOffsets {
@@ -142,7 +142,7 @@ export interface AssignmentPattern
 export interface AssignmentExpression
   extends Omit<PublicAssignmentExpression, 'left' | 'right'>,
     SourceOffsets {
-  left: Identifier
+  left: AssignmentTarget
   right: ExpressionNode
 }
 
@@ -171,6 +171,8 @@ export type BindingPattern =
   | RestElement
   | ArrayPattern
   | ObjectPattern
+
+export type AssignmentTarget = Identifier | MemberExpression
 
 export interface ArrowFunctionExpression
   extends Omit<PublicArrowFunctionExpression, 'params' | 'body'>,

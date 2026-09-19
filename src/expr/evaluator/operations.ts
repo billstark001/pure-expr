@@ -3,6 +3,7 @@ import type {
   BinaryExpression,
   Identifier,
   LogicalExpression,
+  MemberExpression,
   UnaryExpression,
   UpdateExpression,
 } from '../node-types.js'
@@ -188,13 +189,15 @@ export function applyAssignmentOperator(
   }
 }
 
-export function evaluateUpdateExpression(
-  node: UpdateExpression,
-  state: EvalState,
-): number | bigint {
+export interface UpdateOperatorResult {
+  readonly result: number | bigint
+  readonly updated: number | bigint
+}
+
+export function applyUpdateOperator(node: UpdateExpression, value: unknown): UpdateOperatorResult {
   // ECMAScript update expressions use ToNumeric, which preserves BigInt while
   // correctly handling objects whose primitive conversion produces a BigInt.
-  let updated = resolveIdentifier(node.argument, state) as any
+  let updated = value as any
   const result = node.prefix
     ? node.operator === '++'
       ? ++updated
@@ -202,8 +205,7 @@ export function evaluateUpdateExpression(
     : node.operator === '++'
       ? updated++
       : updated--
-  assignIdentifier(node.argument, updated, state)
-  return result
+  return { result, updated }
 }
 
 export function assertPropertyAllowed(
@@ -244,6 +246,43 @@ export function readProperty(
   return policy
     ? policy({ target, key, kind, node })
     : (Object(target) as Record<string, unknown>)[key]
+}
+
+export function assertWritableMemberReference(
+  node: MemberExpression,
+  target: unknown,
+): asserts target is NonNullable<unknown> {
+  if (node.optional) throw new JSEvalError('Optional chains are not valid write targets', node)
+  if (target == null) {
+    throw new JSEvalError(
+      `Cannot set properties of ${target === null ? 'null' : 'undefined'}`,
+      node,
+    )
+  }
+}
+
+export function assertMemberWriteAllowed(node: MemberExpression, state: EvalState): void {
+  if (!state.opts.allowMemberWrites) {
+    throw new JSEvalError('Member writes are not enabled', node)
+  }
+  if (state.opts.writes !== 'commit') {
+    throw new JSEvalError("Member writes require writes: 'commit'", node)
+  }
+}
+
+export function writeProperty(
+  target: unknown,
+  key: string,
+  value: unknown,
+  node: MemberExpression,
+): unknown {
+  if ((typeof target !== 'object' || target === null) && typeof target !== 'function') {
+    throw new JSEvalError(`Cannot assign to property '${key}' on a primitive value`, node)
+  }
+  if (!Reflect.set(target, key, value)) {
+    throw new JSEvalError(`Cannot assign to property '${key}'`, node)
+  }
+  return value
 }
 
 export function applyUnaryOperator(node: UnaryExpression, value: unknown): unknown {

@@ -101,6 +101,8 @@ export const allowAllCalls: JSCallPermissionPolicy = () => true
 export interface JSEvalOptions {
   allowAwait?: boolean
   allowIn?: boolean
+  /** Permit object property mutation after parsing has enabled member write targets. */
+  allowMemberWrites?: boolean
   allowCalls?: boolean
   functionMode?: FunctionMode
   allowRegexLiterals?: boolean

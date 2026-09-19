@@ -280,3 +280,45 @@ printGroup('identifier writes (compiled)', [
     },
   },
 ])
+
+const memberWriteContext = { state: { count: 1 } }
+const identifierCommitBaseline = compile('count = 1, count += 1', { writes: 'commit' })
+const memberAssignment = compile('state.count = 1, state.count = 2', {
+  writes: 'commit',
+  allowMemberWrites: true,
+})
+const memberCompoundAssignment = compile('state.count = 1, state.count += 1', {
+  writes: 'commit',
+  allowMemberWrites: true,
+})
+const memberUpdate = compile('state.count = 1, state.count++, state.count', {
+  writes: 'commit',
+  allowMemberWrites: true,
+})
+
+printGroup('member writes (compiled)', [
+  {
+    name: 'identifier commit baseline',
+    iterations: 250_000,
+    expected: 2,
+    run: () => identifierCommitBaseline.evaluate(commitContext),
+  },
+  {
+    name: 'member assignment',
+    iterations: 250_000,
+    expected: 2,
+    run: () => memberAssignment.evaluate(memberWriteContext),
+  },
+  {
+    name: 'member compound assignment',
+    iterations: 250_000,
+    expected: 2,
+    run: () => memberCompoundAssignment.evaluate(memberWriteContext),
+  },
+  {
+    name: 'member postfix update',
+    iterations: 250_000,
+    expected: 2,
+    run: () => memberUpdate.evaluate(memberWriteContext),
+  },
+])

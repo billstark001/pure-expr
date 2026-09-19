@@ -26,12 +26,16 @@ import {
   applyAssignmentOperator,
   applyBinaryOperator,
   applyUnaryOperator,
+  applyUpdateOperator,
+  assertMemberWriteAllowed,
+  assertPropertyAllowed,
+  assertWritableMemberReference,
   assignIdentifier,
   evaluateLogicalOperator,
-  evaluateUpdateExpression,
   isAssignmentShortCircuited,
   readProperty,
   resolveIdentifier,
+  writeProperty,
 } from './operations.js'
 import { BLOCKED_PROPS } from './security.js'
 import { consumeStep } from './state.js'
@@ -124,16 +128,59 @@ export function createCompileRuntime(options: CompileRuntimeOptions): CompileRun
         return withCompiledStep(node, (state) => evalArrowFunction(node, state))
       case 'AssignmentExpression': {
         const right = compileNode(node.right)
+        if (node.left.type === 'MemberExpression') {
+          const member = node.left
+          const object = compileNode(member.object)
+          const key = compileMemberKey(member)
+          return withCompiledStep(node, (state) => {
+            assertMemberWriteAllowed(member, state)
+            const target = object(state)
+            const propertyKey = key(state)
+            assertWritableMemberReference(member, target)
+            assertPropertyAllowed(propertyKey, member)
+            const current =
+              node.operator === '=' ? undefined : readProperty(target, propertyKey, member, state)
+            if (isAssignmentShortCircuited(node.operator, current)) return current
+            const rightValue = right(state)
+            const value = applyAssignmentOperator(node.operator, current, rightValue)
+            return writeProperty(target, propertyKey, value, member)
+          })
+        }
+        const identifier = node.left
         return withCompiledStep(node, (state) => {
-          const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
+          const current = node.operator === '=' ? undefined : resolveIdentifier(identifier, state)
           if (isAssignmentShortCircuited(node.operator, current)) return current
           const rightValue = right(state)
           const value = applyAssignmentOperator(node.operator, current, rightValue)
-          return assignIdentifier(node.left, value, state)
+          return assignIdentifier(identifier, value, state)
         })
       }
-      case 'UpdateExpression':
-        return withCompiledStep(node, (state) => evaluateUpdateExpression(node, state))
+      case 'UpdateExpression': {
+        if (node.argument.type === 'MemberExpression') {
+          const member = node.argument
+          const object = compileNode(member.object)
+          const key = compileMemberKey(member)
+          return withCompiledStep(node, (state) => {
+            assertMemberWriteAllowed(member, state)
+            const target = object(state)
+            const propertyKey = key(state)
+            assertWritableMemberReference(member, target)
+            assertPropertyAllowed(propertyKey, member)
+            const change = applyUpdateOperator(
+              node,
+              readProperty(target, propertyKey, member, state),
+            )
+            writeProperty(target, propertyKey, change.updated, member)
+            return change.result
+          })
+        }
+        const identifier = node.argument
+        return withCompiledStep(node, (state) => {
+          const change = applyUpdateOperator(node, resolveIdentifier(identifier, state))
+          assignIdentifier(identifier, change.updated, state)
+          return change.result
+        })
+      }
       case 'UnaryExpression': {
         const argument = compileNode(node.argument)
         return withCompiledStep(node, (state) => {

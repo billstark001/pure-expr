@@ -59,6 +59,7 @@ export type {
   AssignmentExpression,
   AssignmentPattern,
   AssignmentProperty,
+  AssignmentTarget,
   AstNode,
   AwaitExpression,
   BinaryExpression,

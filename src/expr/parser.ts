@@ -108,9 +108,7 @@ export class JSExpressionParser {
     if (assignment?.kind !== 'op' || !isAssignmentOperator(assignment.value)) {
       return left
     }
-    if (left.type !== 'Identifier') {
-      throw new JSParseError('Only identifier bindings can be assigned', assignment, this.src)
-    }
+    this.assertWritableTarget(left, assignment, 'assigned')
     this.advance()
     return {
       type: 'AssignmentExpression',
@@ -235,9 +233,7 @@ export class JSExpressionParser {
           )
         }
         if (this.hasLineTerminatorBetween(left.end, t.start)) break
-        if (left.type !== 'Identifier') {
-          throw new JSParseError('Only identifier bindings can be updated', t, this.src)
-        }
+        this.assertWritableTarget(left, t, 'updated')
         this.advance()
         left = {
           type: 'UpdateExpression',
@@ -568,9 +564,7 @@ export class JSExpressionParser {
         }
         this.advance()
         const argument = this.parseExpr(PREC.UNARY)
-        if (argument.type !== 'Identifier') {
-          throw new JSParseError('Only identifier bindings can be updated', t, this.src)
-        }
+        this.assertWritableTarget(argument, t, 'updated')
         return {
           type: 'UpdateExpression',
           operator: t.value,
@@ -783,6 +777,29 @@ export class JSExpressionParser {
   private hasLineTerminatorBetween(start: number | undefined, end: number | undefined): boolean {
     if (start === undefined || end === undefined || !this.src) return false
     return /[\n\r\u2028\u2029]/.test(this.src.slice(start, end))
+  }
+
+  private assertWritableTarget(
+    node: ExpressionNode,
+    token: JSToken,
+    action: 'assigned' | 'updated',
+  ): asserts node is Extract<ExpressionNode, { type: 'Identifier' | 'MemberExpression' }> {
+    if (node.type === 'Identifier') return
+    if (node.type === 'MemberExpression') {
+      if (!this.opts.allowMemberWrites) {
+        throw new JSParseError(
+          'Member writes are not enabled in this context (pass { allowMemberWrites: true })',
+          token,
+          this.src,
+        )
+      }
+      return
+    }
+    throw new JSParseError(
+      `Only identifiers and member properties can be ${action}`,
+      token,
+      this.src,
+    )
   }
 
   private peek(): JSToken | undefined {

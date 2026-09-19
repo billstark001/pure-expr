@@ -33,15 +33,19 @@ import {
   applyAssignmentOperator,
   applyBinaryOperator,
   applyUnaryOperator,
+  applyUpdateOperator,
+  assertMemberWriteAllowed,
+  assertPropertyAllowed,
+  assertWritableMemberReference,
   assignIdentifier,
   compileDirectLocalIdentifier,
   evaluateLogicalOperator,
-  evaluateUpdateExpression,
   isAssignmentShortCircuited,
   readProperty,
   resolveDirectIdentifier,
   resolveDirectLocalIdentifier,
   resolveIdentifier,
+  writeProperty,
 } from './evaluator/operations.js'
 import { BLOCKED_PROPS } from './evaluator/security.js'
 import {
@@ -70,6 +74,7 @@ import {
 } from './evaluator/types.js'
 import type {
   ArrowFunctionExpression,
+  AssignmentExpression,
   BinaryExpression,
   CallExpression,
   ChainExpression,
@@ -81,6 +86,7 @@ import type {
   TaggedTemplateExpression,
   TemplateLiteral,
   UnaryExpression,
+  UpdateExpression,
 } from './node-types.js'
 
 export { createBindingStore, createEvaluationEnvironment } from './evaluator/context.js'
@@ -136,15 +142,10 @@ export function evalNode(node: ExpressionNode, state: EvalState): unknown {
 
     case 'ArrowFunctionExpression':
       return evalArrowFunction(node, state)
-    case 'AssignmentExpression': {
-      const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
-      if (isAssignmentShortCircuited(node.operator, current)) return current
-      const right = evalNode(node.right, state)
-      const value = applyAssignmentOperator(node.operator, current, right)
-      return assignIdentifier(node.left, value, state)
-    }
+    case 'AssignmentExpression':
+      return evalAssignment(node, state)
     case 'UpdateExpression':
-      return evaluateUpdateExpression(node, state)
+      return evalUpdate(node, state)
     case 'UnaryExpression':
       return evalUnary(node, state)
     case 'AwaitExpression':
@@ -337,6 +338,38 @@ function evalUnary(node: UnaryExpression, state: EvalState): unknown {
   return applyUnaryOperator(node, evalNode(node.argument, state))
 }
 
+function evalAssignment(node: AssignmentExpression, state: EvalState): unknown {
+  if (node.left.type === 'Identifier') {
+    const current = node.operator === '=' ? undefined : resolveIdentifier(node.left, state)
+    if (isAssignmentShortCircuited(node.operator, current)) return current
+    const right = evalNode(node.right, state)
+    const value = applyAssignmentOperator(node.operator, current, right)
+    return assignIdentifier(node.left, value, state)
+  }
+
+  assertMemberWriteAllowed(node.left, state)
+  const { target, key } = evalMemberReference(node.left, state)
+  const current = node.operator === '=' ? undefined : readProperty(target, key, node.left, state)
+  if (isAssignmentShortCircuited(node.operator, current)) return current
+  const right = evalNode(node.right, state)
+  const value = applyAssignmentOperator(node.operator, current, right)
+  return writeProperty(target, key, value, node.left)
+}
+
+function evalUpdate(node: UpdateExpression, state: EvalState): number | bigint {
+  if (node.argument.type === 'Identifier') {
+    const change = applyUpdateOperator(node, resolveIdentifier(node.argument, state))
+    assignIdentifier(node.argument, change.updated, state)
+    return change.result
+  }
+
+  assertMemberWriteAllowed(node.argument, state)
+  const { target, key } = evalMemberReference(node.argument, state)
+  const change = applyUpdateOperator(node, readProperty(target, key, node.argument, state))
+  writeProperty(target, key, change.updated, node.argument)
+  return change.result
+}
+
 function evalBinary(node: BinaryExpression, state: EvalState): unknown {
   return applyBinaryOperator(node, evalNode(node.left, state), evalNode(node.right, state))
 }
@@ -349,6 +382,17 @@ function evalLogical(node: LogicalExpression, state: EvalState): unknown {
 
 function memberKey(node: MemberExpression, state: EvalState): string {
   return node.computed ? String(evalNode(node.property, state)) : (node.property as Identifier).name
+}
+
+function evalMemberReference(
+  node: MemberExpression,
+  state: EvalState,
+): { readonly target: unknown; readonly key: string } {
+  const target = evalNode(node.object, state)
+  const key = memberKey(node, state)
+  assertWritableMemberReference(node, target)
+  assertPropertyAllowed(key, node)
+  return { target, key }
 }
 
 function evalMember(node: MemberExpression, state: EvalState): unknown {

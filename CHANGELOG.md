@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Added ECMAScript prefix and postfix update expressions (`++` and `--`) for writable identifier bindings, including Number and BigInt semantics.
+- Added opt-in member assignment and update targets through `allowMemberWrites` in immediate commit mode.
 - Added optional ESTree `loc` generation with configurable starting line, starting column, and source name.
 - Added layered evaluation environments for separately isolated data, host capabilities, and mutable `BindingStore` variables.
 - Added explicit reference, shallow-snapshot, and deep-snapshot context isolation with safe shallow/deep freezing.
@@ -21,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Expanded the context benchmark with member assignment, compound assignment, and update cases.
 - Simplified evaluator state variants and isolated arrow-runtime caches by compilation strategy.
 - Context benchmarks now report sample spread and reset mutable fixtures before warmup and measurement.
 - Public expression node types now derive from ESTree without exposing the parser's internal `start` and `end` offsets.
