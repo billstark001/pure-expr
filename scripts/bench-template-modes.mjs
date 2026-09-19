@@ -1,6 +1,12 @@
 import { performance } from 'node:perf_hooks'
 
-import { allowAllCalls, compileTemplate, renderTemplate } from '../dist/esm/index.js'
+import {
+  allowAllCalls,
+  compileTemplate,
+  createBindingStore,
+  createEvaluationEnvironment,
+  renderTemplate,
+} from '../dist/esm/index.js'
 
 // #region Benchmark cases
 
@@ -8,6 +14,13 @@ const BASE_OPTIONS = Object.freeze({
   evalOptions: {
     isCallableAllowed: allowAllCalls,
   },
+})
+
+const templateVariableValues = { count: 1 }
+const layeredTemplateEnvironment = createEvaluationEnvironment({
+  data: { step: 2, label: 'items' },
+  capabilities: { format: (value) => String(value).toUpperCase() },
+  variables: createBindingStore(templateVariableValues),
 })
 
 const CASES = [
@@ -83,6 +96,19 @@ const CASES = [
     options: BASE_OPTIONS,
     iterations: 250_000,
     expected: 'Count=42',
+  },
+  {
+    name: 'layered-commit',
+    template: '{{ count = step }} {{ format(label) }} / {{ count }}',
+    context: layeredTemplateEnvironment,
+    options: {
+      evalOptions: {
+        isCallableAllowed: allowAllCalls,
+        writes: 'commit',
+      },
+    },
+    iterations: 80_000,
+    expected: '2 ITEMS / 2',
   },
 ]
 

@@ -1,6 +1,12 @@
 import { performance } from 'node:perf_hooks'
 
-import { allowAllCalls, compile, evaluate } from '../dist/esm/index.js'
+import {
+  allowAllCalls,
+  compile,
+  evaluate,
+  ownPropertyAccess,
+  parseExpression,
+} from '../dist/esm/index.js'
 
 // #region Benchmark cases
 
@@ -42,6 +48,27 @@ const EXPR_CASES = [
         context.user.profile.metrics.secondary.current +
         context.account.plan.name.length +
         context.account.flags.beta.value
+      )
+    },
+  },
+  {
+    name: 'own-property-policy',
+    expression: 'user.profile.primary.value + user.profile.secondary.value + account.plan.seats',
+    context: {
+      user: { profile: { primary: { value: 41 }, secondary: { value: 9 } } },
+      account: { plan: { seats: 10 } },
+    },
+    evalOptions: {
+      isCallableAllowed: allowAllCalls,
+      propertyAccess: ownPropertyAccess,
+    },
+    iterations: 100_000,
+    expected: 60,
+    baseline(context) {
+      return (
+        context.user.profile.primary.value +
+        context.user.profile.secondary.value +
+        context.account.plan.seats
       )
     },
   },
@@ -165,6 +192,34 @@ const ARROW_BACKEND_CASES = [
     },
   },
   {
+    name: 'snapshot-closure',
+    expression: '(value => value + bonus)',
+    context: { bonus: 3 },
+    evalOptions: { contextPolicy: { isolation: 'shallow-snapshot' } },
+    createIterations: 160_000,
+    callIterations: 360_000,
+    invokeArgs: [2],
+    expected: 5,
+    baselineFactory(context) {
+      const { bonus } = context
+      return (value) => value + bonus
+    },
+  },
+  {
+    name: 'mutable-parameter',
+    expression: '(value => (value += step, value))',
+    context: { step: 3 },
+    evalOptions: { writes: 'overlay' },
+    createIterations: 150_000,
+    callIterations: 340_000,
+    invokeArgs: [2],
+    expected: 5,
+    baselineFactory(context) {
+      const { step } = context
+      return (value) => value + step
+    },
+  },
+  {
     name: 'defaults-rest-destructure',
     expression: '(({ value, step = bias }, ...rest) => value + step + rest.length + extra)',
     context: { bias: 2, extra: 4 },
@@ -189,6 +244,20 @@ const ARROW_BACKEND_CASES = [
       const { bonus } = context
       return () => 2 + bonus
     },
+  },
+]
+
+const PARSER_CASES = [
+  {
+    name: 'mixed expression',
+    expression:
+      'user?.profile.items.map(({ value = fallback }, index) => value + index).at(0) ?? fallback',
+    iterations: 45_000,
+  },
+  {
+    name: 'pipeline and literals',
+    expression: 'input |> format(%, { nested: [%, fallback], label: `value:${input}` })',
+    iterations: 45_000,
   },
 ]
 
@@ -296,24 +365,29 @@ function printTable(title, headers, rows) {
 const exprRows = []
 
 for (const benchmarkCase of EXPR_CASES) {
-  const { name, expression, context, iterations, expected, baseline } = benchmarkCase
+  const {
+    name,
+    expression,
+    context,
+    iterations,
+    expected,
+    baseline,
+    evalOptions = BENCH_EVAL_OPTIONS,
+  } = benchmarkCase
   const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO))
   const compileIterations = Math.max(2_000, Math.floor(iterations / 60))
 
-  const compiled = compile(expression, BENCH_EVAL_OPTIONS)
+  const compiled = compile(expression, evalOptions)
 
   warmup(() => baseline(context), warmupIterations)
-  warmup(() => evaluate(expression, context, BENCH_EVAL_OPTIONS), warmupIterations)
+  warmup(() => evaluate(expression, context, evalOptions), warmupIterations)
   warmup(() => compiled.evaluate(context), warmupIterations)
-  warmup(
-    () => compile(expression, BENCH_EVAL_OPTIONS),
-    Math.min(compileIterations, warmupIterations),
-  )
+  warmup(() => compile(expression, evalOptions), Math.min(compileIterations, warmupIterations))
 
   const nativeRun = measure(iterations, () => baseline(context))
-  const direct = measure(iterations, () => evaluate(expression, context, BENCH_EVAL_OPTIONS))
+  const direct = measure(iterations, () => evaluate(expression, context, evalOptions))
   const compiledRun = measure(iterations, () => compiled.evaluate(context))
-  const compileOnly = measure(compileIterations, () => compile(expression, BENCH_EVAL_OPTIONS))
+  const compileOnly = measure(compileIterations, () => compile(expression, evalOptions))
 
   assertExpected(name, 'native baseline', nativeRun.lastResult, expected)
   assertExpected(name, DIRECT_LABEL, direct.lastResult, expected)
@@ -343,6 +417,7 @@ for (const benchmarkCase of ARROW_BACKEND_CASES) {
     invokeArgs,
     expected,
     baselineFactory,
+    evalOptions = {},
   } = benchmarkCase
   const warmupCreateIterations = Math.max(1_000, Math.floor(createIterations * WARMUP_RATIO))
   const warmupCallIterations = Math.max(1_000, Math.floor(callIterations * WARMUP_RATIO))
@@ -363,6 +438,7 @@ for (const benchmarkCase of ARROW_BACKEND_CASES) {
   for (const functionMode of FUNCTION_MODES) {
     const options = {
       ...BENCH_EVAL_OPTIONS,
+      ...evalOptions,
       functionMode,
     }
     const compiled = compile(expression, options)
@@ -391,6 +467,34 @@ for (const benchmarkCase of ARROW_BACKEND_CASES) {
       callVsNative: invokeRun.opsPerSecond / nativeInvokeRun.opsPerSecond,
     })
   }
+}
+
+const parserRows = []
+
+for (const { name, expression, iterations } of PARSER_CASES) {
+  const warmupIterations = Math.max(1_000, Math.floor(iterations * WARMUP_RATIO))
+  const locationOptions = {
+    locations: { source: 'benchmark.expr', startLine: 10, startColumn: 4 },
+  }
+
+  warmup(() => parseExpression(expression), warmupIterations)
+  warmup(() => parseExpression(expression, locationOptions), warmupIterations)
+
+  const plain = measure(iterations, () => parseExpression(expression))
+  const located = measure(iterations, () => parseExpression(expression, locationOptions))
+
+  if (plain.lastResult.loc !== undefined) throw new Error(`${name}: default parse emitted loc`)
+  if (located.lastResult.loc?.source !== 'benchmark.expr') {
+    throw new Error(`${name}: located parse did not retain its source name`)
+  }
+
+  parserRows.push({
+    name,
+    iterations,
+    plainOps: plain.opsPerSecond,
+    locatedOps: located.opsPerSecond,
+    locationRatio: located.opsPerSecond / plain.opsPerSecond,
+  })
 }
 
 console.log('expr mode benchmark')
@@ -448,6 +552,26 @@ printTable(
     pad(formatOps(row.nativeInvokeOps), 16),
     pad(formatOps(row.callOps), 16),
     pad(`${formatRatio(row.callVsNative)}x`, 16),
+  ]),
+)
+
+const parserHeaders = [
+  pad('case', CASE_NAME_WIDTH),
+  pad('iterations', 12),
+  pad('plain parse/s', 16),
+  pad('located parse/s', 18),
+  pad('located/plain', 16),
+]
+
+printTable(
+  'parser location metadata',
+  parserHeaders,
+  parserRows.map((row) => [
+    pad(row.name, CASE_NAME_WIDTH),
+    pad(row.iterations.toLocaleString('en-US'), 12),
+    pad(formatOps(row.plainOps), 16),
+    pad(formatOps(row.locatedOps), 18),
+    pad(`${formatRatio(row.locationRatio)}x`, 16),
   ]),
 )
 

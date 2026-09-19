@@ -6,11 +6,12 @@ const SAMPLE_COUNT = 5
 const WARMUP_RATIO = 0.05
 const NAME_WIDTH = 28
 
-function measure(iterations, fn) {
+function measure(iterations, fn, beforeSample) {
   let lastResult
   const samples = []
 
   for (let sample = 0; sample < SAMPLE_COUNT; sample += 1) {
+    beforeSample?.()
     const startedAt = performance.now()
     for (let index = 0; index < iterations; index += 1) lastResult = fn()
     samples.push(performance.now() - startedAt)
@@ -28,7 +29,7 @@ function warmup(iterations, fn) {
 function runCase(benchmarkCase) {
   const warmupIterations = Math.max(1_000, Math.floor(benchmarkCase.iterations * WARMUP_RATIO))
   warmup(warmupIterations, benchmarkCase.run)
-  const result = measure(benchmarkCase.iterations, benchmarkCase.run)
+  const result = measure(benchmarkCase.iterations, benchmarkCase.run, benchmarkCase.beforeSample)
   if (!Object.is(result.lastResult, benchmarkCase.expected)) {
     throw new Error(
       `${benchmarkCase.name} produced ${String(result.lastResult)} instead of ${String(benchmarkCase.expected)}`,
@@ -143,6 +144,47 @@ printGroup('small context isolation (compiled)', [
   },
 ])
 
+const layeredSource = 'left + right + count'
+const layeredExpression = compile(layeredSource)
+const flatLayeredContext = { left: 20, right: 21, count: 1 }
+const dataOnlyEnvironment = createEvaluationEnvironment({ data: flatLayeredContext })
+const dataCapabilitiesEnvironment = createEvaluationEnvironment({
+  data: { left: 20, count: 1 },
+  capabilities: { right: 21 },
+})
+const fullyLayeredEnvironment = createEvaluationEnvironment({
+  data: { left: 20 },
+  capabilities: { right: 21 },
+  variables: createBindingStore({ count: 1 }),
+})
+
+printGroup('layered environment lookup (compiled)', [
+  {
+    name: 'flat record',
+    iterations: smallIterations,
+    expected: 42,
+    run: () => layeredExpression.evaluate(flatLayeredContext),
+  },
+  {
+    name: 'data-only environment',
+    iterations: smallIterations,
+    expected: 42,
+    run: () => layeredExpression.evaluate(dataOnlyEnvironment),
+  },
+  {
+    name: 'data + capabilities',
+    iterations: 250_000,
+    expected: 42,
+    run: () => layeredExpression.evaluate(dataCapabilitiesEnvironment),
+  },
+  {
+    name: 'data + capabilities + vars',
+    iterations: 250_000,
+    expected: 42,
+    run: () => layeredExpression.evaluate(fullyLayeredEnvironment),
+  },
+])
+
 const wideContext = { nested: { value: 1 } }
 for (let index = 0; index < 64; index += 1) wideContext[`key${index}`] = index
 const wideSource = 'key0 + key63 + nested.value'
@@ -198,12 +240,18 @@ printGroup('identifier writes (compiled)', [
     name: 'commit record',
     iterations: 250_000,
     expected: 3,
+    beforeSample: () => {
+      commitContext.count = 1
+    },
     run: () => commitWrite.evaluate(commitContext),
   },
   {
     name: 'commit BindingStore',
     iterations: 250_000,
     expected: 3,
+    beforeSample: () => {
+      variableValues.count = 1
+    },
     run: () => commitWrite.evaluate(variableEnvironment),
   },
   {
@@ -216,6 +264,9 @@ printGroup('identifier writes (compiled)', [
     name: 'transaction + commit',
     iterations: 150_000,
     expected: 3,
+    beforeSample: () => {
+      committedTransactionContext.count = 1
+    },
     run: () => {
       const result = transactionWrite.evaluate(committedTransactionContext)
       result.commit()

@@ -307,10 +307,10 @@ pnpm run bench:lexer
 pnpm run ci
 ```
 
-The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, call-heavy, template-literal-heavy, short repeated, and Hack-pipe-heavy expressions. It also reports arrow-function creation and invocation throughput for both the `default` and `performance` function backends.
+The expr benchmark compares direct evaluate(...) calls with precompiled compile(...).evaluate(...) calls across arithmetic-heavy, member-access-heavy, property-policy, optional-chain, call-heavy, template-literal-heavy, short repeated, and Hack-pipe-heavy expressions. It also reports arrow-function creation and invocation throughput for both the `default` and `performance` function backends, including snapshot captures and mutable lexical parameters, plus parser throughput with and without location metadata.
 
-The context benchmark compares compiled evaluation throughput across reference, shallow-snapshot, deep-snapshot, freeze, layered-environment, overlay, commit, and transaction policies. It includes both small and wide context shapes so fixed per-evaluation costs and snapshot scaling remain visible.
+The context benchmark compares compiled evaluation throughput across reference, shallow-snapshot, deep-snapshot, freeze, full data/capability/variable layering, overlay, commit, and transaction policies. It includes both small and wide context shapes so fixed per-evaluation costs and snapshot scaling remain visible.
 
-The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, and short repeated templates.
+The template benchmark compares direct renderTemplate(...) calls with precompiled compileTemplate(...).render(...) calls across member-heavy, call-heavy, HTML-escaped, short repeated, and layered committed-write templates.
 
-The lexer benchmark reports source and token throughput for the default path, source retention with `raw: true`, and custom-rule misses and hits.
+The lexer benchmark reports source and token throughput for the default path, source retention with `raw: true`, number-policy validation, and ordered custom-rule misses, early hits, late hits, and combined raw-token paths.

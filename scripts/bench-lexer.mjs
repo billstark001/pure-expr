@@ -18,6 +18,9 @@ const EXPRESSIONS = [
 
 const DEFAULT_SOURCE = `${EXPRESSIONS.join(';\n// expression boundary\n')};\n`.repeat(80)
 const WORD_OPERATOR_SOURCE = DEFAULT_SOURCE.replaceAll(' && ', ' and ')
+const DECIMAL_NUMBER_SOURCE = '0 + 1 + 12 + 12.5 + .25 + 1e3 + 2.5e-2 + 9007199254740991;\n'.repeat(
+  600,
+)
 
 const neverMatchRules = [
   {
@@ -51,6 +54,22 @@ const cases = [
     name: 'word operator rule',
     source: WORD_OPERATOR_SOURCE,
     options: { rules: wordOperatorRules },
+  },
+  {
+    name: 'three rules, late hit',
+    source: WORD_OPERATOR_SOURCE,
+    options: { rules: [...neverMatchRules, ...neverMatchRules, ...wordOperatorRules] },
+  },
+  {
+    name: 'raw plus custom rule',
+    source: WORD_OPERATOR_SOURCE,
+    options: { raw: true, rules: wordOperatorRules },
+  },
+  { name: 'decimal corpus default', source: DECIMAL_NUMBER_SOURCE },
+  {
+    name: 'decimal-only numbers',
+    source: DECIMAL_NUMBER_SOURCE,
+    options: { numbers: { radices: [10], bigint: false, separators: false } },
   },
 ]
 
@@ -99,12 +118,12 @@ console.log(`node ${process.version}; median of ${SAMPLE_COUNT} samples`)
 console.log(`default corpus: ${DEFAULT_SOURCE.length.toLocaleString('en-US')} UTF-16 code units`)
 console.log('')
 console.log(
-  `${'case'.padEnd(24)}${'MiB/s'.padStart(12)}${'token/s'.padStart(18)}${'sample ms'.padStart(14)}`,
+  `${'case'.padEnd(26)}${'MiB/s'.padStart(12)}${'token/s'.padStart(18)}${'sample ms'.padStart(14)}`,
 )
-console.log('-'.repeat(68))
+console.log('-'.repeat(70))
 for (const row of rows) {
   console.log(
-    `${row.name.padEnd(24)}${row.mibPerSecond.toFixed(1).padStart(12)}${formatNumber(
+    `${row.name.padEnd(26)}${row.mibPerSecond.toFixed(1).padStart(12)}${formatNumber(
       row.tokensPerSecond,
     ).padStart(18)}${row.elapsedMs.toFixed(1).padStart(14)}`,
   )
